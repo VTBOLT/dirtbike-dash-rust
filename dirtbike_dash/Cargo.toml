@@ -1,0 +1,28 @@
+[package]
+name = "dirtbike_dash"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name="test"
+path="src/main.rs"
+
+[dependencies]
+cxx-qt = "0.8.1"
+gpsd = "0.1.2"
+can = "0.2.0"
+socketcan = { version = "3.5", optional = true }
+anyhow    = "1"
+bitflags   = "2.11.0"
+gpsd_client = {version = "0.1.5", optional = true}
+gpsd_proto = {version = "1.0.0", optional = true}
+
+[features]
+default = ["can"]
+
+# requires gpsd installed
+gps = ["dep:gpsd_client"]
+
+# requires socketcan installed
+can = ["dep:socketcan"]
+
