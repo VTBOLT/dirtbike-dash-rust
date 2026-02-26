@@ -1,3 +1,6 @@
+
+// currently about 80% claude because I have frankly no clue how the gps works but given that gps is bugging, I'll have to redo it all myself from the looks of things anyway
+
 use std::{
     io::BufReader,
     net::TcpStream,

@@ -1,26 +1,14 @@
-//! CAN bus simulator — encodes data into real CAN frames and sends them over
-//! a virtual CAN interface (`vcan0`).  The normal `can::run("vcan0")` thread
-//! reads them and feeds them through `process_frame`, exactly like hardware.
-//!
-//! This tests the full byte-encoding/decoding pipeline end-to-end.
-//!
-//! ## Setup (one-time, needs root)
-//!
-//! ```sh
-//! sudo modprobe vcan
-//! sudo ip link add dev vcan0 type vcan
-//! sudo ip link set up vcan0
-//! ```
-//!
-//! ## Simulated ride cycle (~41 s, then loops)
-//!
-//!   Boot → Precharge → Ready → Riding (accel / cruise / decel) → Idle → Fault demo → repeat
+//// VCAN Setup instructions
+/// mandatory to use the sim lmao. probably only supports linux so..
+
+// sudo modprobe vcan
+// sudo ip link add dev vcan0 type vcan
+// sudo ip link set up vcan0
 
 use socketcan::{CanDataFrame, CanSocket, EmbeddedFrame, Socket, StandardId};
 use std::{thread, time::Duration};
 
-// CAN IDs (duplicated here rather than importing from can.rs so the sim
-// module doesn't depend on can's cfg-gated can_ids mod at the source level)
+// can ids. I dont really want to iomport them even if it is more memory efficient
 const AUX_BATTERY: u16          = 0x700;
 const INFO: u16                 = 0x6B0;
 const CELL_MAX_MIN_VOLTAGES: u16 = 0x6B3;
@@ -38,13 +26,13 @@ const ACC_SIGNAL: u16           = 0x706;
 const BMS_WARN_WEAK_CELL: u32   = 1 << 10;
 const BMS_ERR_PACK_TOO_HOT: u32 = 1 << 7;
 
-/// Tick interval — 50 Hz matches a typical CAN bus update rate
+// Tick interval — 50 Hz matches a typical CAN bus update rate
 const TICK_MS: u64 = 20;
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/// Build and send one CAN frame.  Panics on ID creation failure (all our
-/// IDs are valid standard IDs) but logs and continues on socket write errors.
+// Build and send one CAN frame.  Panics on ID creation failure (all our
+// IDs are valid standard IDs) but logs and continues on socket write errors.
 fn send(sock: &CanSocket, id: u16, data: &[u8]) {
     let sid = StandardId::new(id).expect("invalid standard CAN ID");
     if let Some(frame) = CanDataFrame::new(sid, data) {
@@ -60,18 +48,18 @@ fn le(v: u16) -> [u8; 2] {
     v.to_le_bytes()
 }
 
-/// Map the "human" bike_status (0–5) back to the raw VSM status code that
-/// `process_frame` expects on the INTERNAL_STATES frame.
-///
-/// ```text
-///   bike_status  raw status   motor_on (data[0] == 6)
-///   0 (off)      — use ACC_SIGNAL data[0]=0 instead —
-///   1 (idle)     0            false
-///   2 (precharge)1            false
-///   3 (ready)    4            false
-///   4 (active)   6            true
-///   5 (fault)    7            false
-/// ```
+// Map the "human" bike_status (0–5) back to the raw VSM status code that
+// `process_frame` expects on the INTERNAL_STATES frame.
+//
+// ```text
+//   bike_status  raw status   motor_on (data[0] == 6)
+//   0 (off)      — use ACC_SIGNAL data[0]=0 instead —
+//   1 (idle)     0            false
+//   2 (precharge)1            false
+//   3 (ready)    4            false
+//   4 (active)   6            true
+//   5 (fault)    7            false
+// ```
 fn bike_status_to_raw_vsm(status: i32) -> u16 {
     match status {
         1 => 0,
@@ -350,3 +338,5 @@ fn run_sim() {
         thread::sleep(Duration::from_millis(TICK_MS));
     }
 }
+
+// as a reward for scrolling to the bottom, or because you searched the entire thing to find why it isnt working, this isn't human code. So I honestly couldn't tell you
