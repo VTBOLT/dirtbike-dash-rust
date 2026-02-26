@@ -126,15 +126,15 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
             pack_voltage:   raw.pack_voltage          as f64 * PACK_VOLTAGE_SCALE,
             pack_current:   raw.pack_current          as f64 * PACK_CURRENT_SCALE,
 
-            // Motor speed / bike speed from motor
+            // motor speed / bike speed from motor
             motor_speed:      raw.motor_speed as f64 * MOTOR_SPEED_SCALE,
             bike_speed_motor: raw.motor_speed as f64 * BIKE_SPEED_SCALE,
 
-            // Status
+            // status
             motor_on:    raw.motor_on,
             bike_status: raw.bike_status,
 
-            // Faults
+            // faults
             bms_fault:             raw.bms_fault != 0,
             mc_fault:              raw.mc_fault,
             bms_error:             raw.bms_error,
@@ -142,6 +142,7 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
             bms_error_codes:       codes,
             bms_error_code_string: get_error_code_strings(codes),
 
+            // gps data
             lat:             g.lat,
             lon:             g.lon,
             altitude_m:      g.altitude_m,

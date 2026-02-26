@@ -21,8 +21,11 @@ gpsd_proto = {version = "1.0.0", optional = true}
 default = []
 
 # requires gpsd installed
-gps = ["dep:gpsd_client"]
+gps = ["dep:gpsd_proto"]
 
 # requires socketcan installed
 can = ["dep:can", "dep:socketcan"]
+
+# requires can working 
+sim = ["can"]
 
