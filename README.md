@@ -52,8 +52,6 @@ You will also have to clone the repo and manually cd into `./dirtbike-dash` befo
 
 </details>
 
----
-
 ### Optional Features
 
 #### Can / SocketCAN
