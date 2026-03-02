@@ -25,10 +25,7 @@ You will also have to clone the repo and manually cd into `./dirtbike-dash` befo
 <summary><h3 style="display: inline">All Non-Linux Systems</h3></summary>
 
 - To build on systems other than linux, simply pass `cargo build` when cd'd into the directory.
-
 - Note that, because this program is built for a raspberry pi, it is build around certain linux packages that are not supported, so testing will likely not work
-
-- As above, cargo run is effectively obsolete on non-linux systems, if it even succeeds in running to begin with
 
 </details>
 
@@ -37,9 +34,10 @@ You will also have to clone the repo and manually cd into `./dirtbike-dash` befo
 <details>
 <summary><h3 style="display: inline">Only Windows</h3></summary>
 
-- For specifically windows systems, rust mandates using Visual Studio 2017+. It does not support Visual Studio Code. I do not know why this is, nor do I frankly care. Further support for building on windows will not be provided, figure it out
-
-- It literally can't be tested on non-linux platforms anyway as far as I'm aware (Mason correct me), so it isn't a priority
+- To build on windows, your options are either to build in visual studio, or build in WSL. 
+- I don't recommend Visual Studio and cannot help, probably use WSL
+- For WSL, windows, rust, and VS Code each give guides for installing and using their software in WSL, follow those. 
+- You probably still won't be able to build with features, but otherwise follow the LInux instructions inside the WSL window.
 
 </details>
 
@@ -49,9 +47,7 @@ You will also have to clone the repo and manually cd into `./dirtbike-dash` befo
 <summary><h3 style="display: inline">Linux Systems</h3></summary>
 
 - To build on linux systems without dependencies, simply pass `cargo build` or `cargo run` as before. Note that running without dependencies will not work
-
 - To build with dependencies, pass `cargo build --features "can gps sim"`. Descriptions of each optional feature will be below
-
 - The list of dependencies can be found in `./dirtbike-dash/Cargo.toml` as well as the descriptions below, though they will have to be manually acquired through your package manager
 
 </details>
@@ -70,7 +66,7 @@ That said, they are mandatory for most of the capabilities of the dashboard. Unl
 
 #### GPS / GPSD
 
-This is the protocol that handles gps data. It is the most optional of the optional features, so if you can't get it to work like I couldn't for about two days, don't include it as a feature argument and move on.
+This is the protocol that handles gps data. It is the most optional of the optional features for testing, so if you can't get it to work like I couldn't for about two days, don't include it as a feature argument and move on.
 <br>
 Should require both the gpsd and gpsd_proto packages to be installed. Should not require gpsd_client, but if you are having build issues within `gps.rs`, try installing it and let me know to update.
 
@@ -88,10 +84,10 @@ Sim does not support simulated data for gps and only simulates data. It does not
 
 ### Project by:
 
-- Blake Gaither
-- ~~Max Lupariello~~
-- ~~Cayden Cubbin~~
+- Blake Gaither (Backend)
+- Cayden Cubbin (Frontend)
+- ~~Max Lupariello (Bum)~~
 
 <h4 style="display: inline">LOCK IN</h4>
 
-They gotta focus up and help before I remove that strikethrough
+He gotta focus up and help before I remove that strikethrough
