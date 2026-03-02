@@ -12,18 +12,18 @@ use std::{
 };
 
 fn main() {
-    // Default to vcan0 when simulating, can0 otherwise
+    // if simulating, check vcan. DO NOT pass sim an argument for deployment, this will cause it to break
     let iface = env::args().nth(1).unwrap_or_else(|| {
         if cfg!(feature = "sim") { "vcan0".to_string() }
         else                     { "can0".to_string() }
     });
 
-    // ── GPS ─────────────────────────────────────────────────────────────
+    // just grabs gps data\
+    // gps also was a lot of non-human code, probably why it doesn't work
     let gps = gps::new_gps_state();
     gps::spawn(std::sync::Arc::clone(&gps));
 
-    // ── CAN reader — always runs when "can" feature is active ───────────
-    //    With --features sim, "can" is implied, so can::run reads vcan0.
+    // can error reader. can is optional so others can test build on windows but it really isn't functional without it.
     {
         let iface_clone = iface.clone();
         thread::spawn(move || {
@@ -33,17 +33,17 @@ fn main() {
         });
     }
 
-    // ── CAN writer (simulator) — sends encoded frames to vcan0 ─────────
+    // makes the sim thread if passed with sim
     #[cfg(feature = "sim")]
     {
         println!("[MAIN] Simulator mode — writing fake CAN frames to {iface}");
         sim::spawn();
     }
 
-    // ── Backend (scales raw CAN data, merges GPS) ───────────────────────
+    // assigns backend and adds the gps data. I may have done this wrong, this may also be why the gps data doesn't work but given the launch error I dont think so
     let backend = backend::new(gps);
 
-    // ── Print loop ──────────────────────────────────────────────────────
+    // prints. please say it looks cool i put too much time into making it line up
     loop {
         thread::sleep(Duration::from_secs(1));
         let b = backend.lock().unwrap().clone();
@@ -84,7 +84,7 @@ fn main() {
         println!("║  BMS warning   :  {:>7}                ║", b.bms_warning);
         println!("║  BMS error     :  {:>7}                ║", b.bms_error);
         println!("║  BMS err codes : 0x{:06X}                ║", b.bms_error_codes);
-        if !b.bms_error_code_string.is_empty() {
+        if !b.bms_error_code_string.is_empty() { // bms errors aren't displayed by default, this picks them out and makes them a new line
             for msg in &b.bms_error_code_string {
                 println!("║    ⚠ {:<36}║", msg);
             }
@@ -93,7 +93,7 @@ fn main() {
         println!("║  GPS           :  ({:.6}, {:.6})   ║", b.lat, b.lon);
         println!("║  Altitude      :  {:>7.1} m              ║", b.altitude_m);
         println!("║  Heading       :  {:>10}°            ║",
-                 b.heading_deg.map(|h| format!("{:.1}", h)).unwrap_or_else(|| "---".into()));
+                 b.heading_deg.map(|h| format!("{:.1}", h)).unwrap_or_else(|| "---".into())); // random cluade line because I was obessed with making it pretty and couldn't figure it out. I don't know how it works and im afraid to touch it
         println!("║  GPS fix       :  {:>5} (mode {})         ║", b.gps_fix_valid, b.gps_fix_mode);
         println!("║  GPS time      :  {:>5} s                ║", b.gps_timestamp_s);
         println!("╚══════════════════════════════════════════╝");

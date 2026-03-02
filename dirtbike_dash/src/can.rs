@@ -23,7 +23,7 @@ pub mod can_ids {
     pub const ACC_SIGNAL: u32          = 0x706;
 }
 
-// detecting bms errors
+// detecting bms errors & warnings
 pub mod bms_warnings {
     pub const DISCHARGE_LIMIT_ENFORCEMENT: u32  = 1 << 0;
     pub const CHARGER_SAFETY_RELAY: u32          = 1 << 1;
@@ -80,7 +80,7 @@ pub const ALL_BMS_WARNINGS: u32 = bms_warnings::DISCHARGE_LIMIT_ENFORCEMENT
     | bms_warnings::OPEN_WIRING
     | bms_warnings::CHARGE_LIMIT_ENFORCEMENT;
 
-
+// I havew this built to enable different modes maybe for the debug vs rider menu? either way, it passes a warning about it, don't worry abt it 
 #[derive(Debug, Default, Clone)]
 pub struct OurCanData {
     pub aux_voltage: u16,
@@ -171,7 +171,7 @@ fn process_frame(
     low_avg: &mut VoltageAverager,
     high_avg: &mut VoltageAverager,
 ) {
-    match id {
+    match id { // I think this is right. hopefully.
         can_ids::AUX_BATTERY => {
             data.aux_voltage = safe_u16(d, 0, 1);
             data.aux_percent = data.aux_voltage as f64 / 2.5;
@@ -251,8 +251,9 @@ fn process_frame(
                 data.bike_status = safe_byte(d, 0) as i32;
             }
         }
+
         unknown_id => {
-            // Mirrors the default branch in can.cpp — log and move on
+            // hey we have a whole project for this now :D
             eprintln!("[CAN] Unknown frame ID: 0x{unknown_id:03X}  data: {d:?}");
         }
     }
@@ -263,22 +264,25 @@ fn process_frame(
 pub fn run(iface: &str) -> anyhow::Result<()> {
     use socketcan::{CanFrame, CanSocket, EmbeddedFrame, Frame, Socket};
 
+    // opens a can socket and assigns raw data
     let sock = CanSocket::open(iface)?;
     println!("[CAN] Opened interface: {iface}");
 
+    // pulls a new number from each averager
     let mut low_avg  = VoltageAverager::new();
     let mut high_avg = VoltageAverager::new();
 
     loop {
-        match sock.read_frame() {
+        match sock.read_frame() { // reads a single frame
             Ok(CanFrame::Data(frame)) => {
-                let id = frame.raw_id();
-                let d  = frame.data();
+                let id = frame.raw_id(); // picks out the id 
+                let d  = frame.data(); // picks out the data matching the id
 
+                // sets a data lock. if you don't get how this works, I would recommend the rust documentation. it contains a protected copy of the data basically
                 let mut guard = DATA.lock().unwrap();
                 process_frame(id, d, &mut guard, &mut low_avg, &mut high_avg);
             }
-            Ok(_) => {} // Remote / error frames — ignore
+            Ok(_) => {} // can error handler
             Err(e) => {
                 eprintln!("[CAN] Read error: {e}");
                 std::thread::sleep(std::time::Duration::from_millis(10));
@@ -290,6 +294,6 @@ pub fn run(iface: &str) -> anyhow::Result<()> {
 /// does not contain can capabilities
 #[cfg(not(feature = "can"))]
 pub fn run(_iface: &str) -> anyhow::Result<()> {
-    println!("[CAN] SocketCAN not available — run() is a no-op.");
+    println!("[CAN] SocketCAN not available — run() is not available.");
     Ok(())
 }
