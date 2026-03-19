@@ -86,8 +86,4 @@ Sim does not support simulated data for gps and only simulates data. It does not
 
 - Blake Gaither (Backend)
 - Cayden Cubbin (Frontend)
-- ~~Max Lupariello (Bum)~~
-
-<h4 style="display: inline">LOCK IN</h4>
-
-He gotta focus up and help before I remove that strikethrough
+- Max Lupariello (GPS)

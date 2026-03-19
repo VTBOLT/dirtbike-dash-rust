@@ -1,7 +1,7 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
+    time::Duration, usize::MAX,
 };
 
 use crate::can::{self, bms_errors, bms_warnings};
@@ -20,6 +20,7 @@ const BMS_TEMPERATURE_SCALE: f64       = 0.1;   // → C
 const MOTOR_SPEED_SCALE: f64           = 1.0;   // → RPM
 const BIKE_SPEED_SCALE: f64            = 0.00953; // RPM → mph
 const MC_TEMPERATURE_SCALE: f64        = 0.1;   // → C
+const MAX_PACK_CURRENT: f64            = 1.0/175.0;
 
 // struct to contain all the can data
 #[derive(Debug, Default, Clone)]
@@ -52,11 +53,13 @@ pub struct Backend {
     pub gps_timestamp_s: f64,
     pub gps_fix_valid: bool,
     pub gps_fix_mode: u8,
+    pub throttle: f64,
 }
 
 // check for errors as bool
 pub fn get_error_code_strings(codes: u32) -> Vec<String> {
     let mut out = Vec::new();
+
 
     macro_rules! check {
         ($mask:expr, $label:expr) => {
@@ -151,6 +154,9 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
             gps_timestamp_s: g.timestamp_s,
             gps_fix_valid:   g.fix_valid,
             gps_fix_mode:    g.fix_mode,
+
+            // dedicated rider readout vars
+            throttle:        raw.pack_current as f64 * MAX_PACK_CURRENT,
         };
 
         *shared.lock().unwrap() = next;

@@ -46,7 +46,7 @@ fn main() {
     // prints. please say it looks cool i put too much time into making it line up
     loop {
         thread::sleep(Duration::from_secs(1));
-        let b = backend.lock().unwrap().clone();
+        let b: backend::Backend = backend.lock().unwrap().clone();
 
         let status_label = match b.bike_status {
             0 => "OFF",
@@ -78,6 +78,7 @@ fn main() {
         println!("║  Speed (motor) :  {:>7.1} mph            ║", b.bike_speed_motor);
         println!("║  Speed (GPS)   :  {:>7.1} mph            ║", b.bike_speed_gps);
         println!("║  Motor on      :  {:>7}                ║", b.motor_on);
+        println!("║  Throttle(%)   :  {:>7}                ║", b.throttle);
         println!("╠══════════════════════════════════════════╣");
         println!("║  MC fault      :  {:>7}                ║", b.mc_fault);
         println!("║  BMS fault     :  {:>7}                ║", b.bms_fault);
@@ -90,11 +91,11 @@ fn main() {
             }
         }
         println!("╠══════════════════════════════════════════╣");
-        println!("║  GPS           :  ({:.6}, {:.6})   ║", b.lat, b.lon);
-        println!("║  Altitude      :  {:>7.1} m              ║", b.altitude_m);
-        println!("║  Heading       :  {:>10}°            ║",
+        println!("║  GPS           :  ({:.6}, {:.6})     ║", b.lat, b.lon);
+        println!("║  Altitude      :  {:>7.1} m                   ║", b.altitude_m);
+        println!("║  Heading       :  {:>10}°                 ║",
                  b.heading_deg.map(|h| format!("{:.1}", h)).unwrap_or_else(|| "---".into())); // random cluade line because I was obessed with making it pretty and couldn't figure it out. I don't know how it works and im afraid to touch it
-        println!("║  GPS fix       :  {:>5} (mode {})         ║", b.gps_fix_valid, b.gps_fix_mode);
+        println!("║  GPS fix       :  {:>5} (mode {})             ║", b.gps_fix_valid, b.gps_fix_mode);
         println!("║  GPS time      :  {:>5} s                ║", b.gps_timestamp_s);
         println!("╚══════════════════════════════════════════╝");
     }
