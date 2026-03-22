@@ -6,14 +6,14 @@ use std::{
 
 use crate::can::{self, bms_errors, bms_warnings};
 use crate::gps::SharedGpsState;
-use crate::soc::{self, data_collection};
+use crate::soc::{self};
 
 
 // scaler constants
 const MOTOR_TEMPERATURE_SCALE: f64     = 0.1;   // → C
 const AUX_VOLTAGE_SCALE: f64           = 0.1;   // → V
 const AUX_PERCENT_SCALE: f64           = 1.0;   // → %
-const PACK_STATE_OF_CHARGE_SCALE: f64  = 1.0;   // → %
+const PACK_STATE_OF_CHARGE_SCALE: f64  = 100.0;   // → %
 const PACK_VOLTAGE_SCALE: f64          = 0.1;   // → V
 const PACK_CURRENT_SCALE: f64          = 0.1;   // → A
 const HIGH_CELL_TEMP_SCALE: f64        = 0.1;   // → C
@@ -135,7 +135,6 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
         soc_value = soc::data_collection(voltage, ocv_curve.clone(), &mut v_buf, &mut c_buf, &mut initial);
 
         // builds backend
-        let codes = raw.bms_error_codes;
         let next = Backend {
 
             // Temperatures
@@ -150,7 +149,7 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
             aux_percentage: raw.aux_percent         * AUX_PERCENT_SCALE,
 
             // Main pack
-            pack_soc:       soc_value,
+            pack_soc:       soc_value * PACK_STATE_OF_CHARGE_SCALE,
             pack_voltage:   voltage,
             pack_current:   current,
 
@@ -167,8 +166,8 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
             mc_fault:              raw.mc_fault,
             bms_error:             raw.bms_error,
             bms_warning:           raw.bms_warning,
-            bms_error_codes:       codes,
-            bms_error_code_string: get_error_code_strings(codes),
+            bms_error_codes:       raw.bms_error_codes,
+            bms_error_code_string: get_error_code_strings(raw.bms_error_codes),
 
             // gps data
             lat:             g.lat,

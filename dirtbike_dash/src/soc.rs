@@ -1,13 +1,11 @@
 use std::fs::{File, OpenOptions};
 use std::io::{BufWriter, Write, Seek, SeekFrom, BufReader, BufRead, Read};
 use fs2::FileExt;
-
 use ndarray::{Array, Array2, arr2};
 use num::pow;
 use polyfit_rs::polyfit_rs::polyfit;
 
-use crate::soc;
-
+// creates a polynomial regression model to match the data points. Instead of using a standardized one, this should recalculate itself and generate a new one without need for update, at the cost of starup performance and some storage
 pub fn ocv_curve(soc_data: Array2<f64>) -> Vec<f64> {
     let voltage_data: Vec<f64> = soc_data.row(0).to_vec();
     let cap_data: Vec<f64> = soc_data.row(1).to_vec();
@@ -28,11 +26,13 @@ pub fn ocv_curve(soc_data: Array2<f64>) -> Vec<f64> {
 //     let c_buf = cap_data;
 // }
 
+// responsible for most everything
 pub fn data_collection(voltage: f64, curve: Vec<f64>, v_buf: &mut Vec<f64>, c_buf: &mut Vec<f64>, initial: &mut bool) -> f64 {
     let mut soc_value;
 
-    // defines the file and calculates the capacity using the curve. All relevant data now exists
     let file = OpenOptions::new().write(true).open("soctable").expect("failed read");
+
+    // pulls the curve generated from previous instances. The bike will never be on long enough to regenerate a new curve and polyfit is kinda bulky
     let capacity = curve[0] + curve[1]*voltage + curve[2]*(pow(voltage, 2)) + curve[3]*(pow(voltage, 3)) + curve[4]*(pow(voltage, 4));
 
     let mut writer = BufWriter::new(file);
@@ -40,17 +40,18 @@ pub fn data_collection(voltage: f64, curve: Vec<f64>, v_buf: &mut Vec<f64>, c_bu
     v_buf.push(voltage);
     c_buf.push(capacity);
 
-    if v_buf.len() >= 25 {
+    // writes 2 lines onto the file of 100 points each for ocv curve calculations
+    if v_buf.len() >= 100 {
         writer.get_ref().lock_exclusive().expect("failed to lock");
         writer.seek(SeekFrom::Start(0)).expect("failed to seek");
 
-        // Write all 25 voltages on line 1
+        // Write all 100 voltages on line 1
         for v in v_buf.iter() {
             write!(writer, "{} ", v).expect("failed to write");
         }
         writeln!(writer, "").expect("failed to write newline");
 
-        // Write all 25 calculated values on line 2
+        // Write all 100 capacity values on line 2
         for c in c_buf.iter() {
             write!(writer, "{} ", c).expect("failed to write");
         }
@@ -64,9 +65,9 @@ pub fn data_collection(voltage: f64, curve: Vec<f64>, v_buf: &mut Vec<f64>, c_bu
         c_buf.clear();
     }
 
+    // calculates the ocv. It kinda bad but any other way to calculate the ocv once ten use coulomb counting would be much more performance taxing and I have plenty of memory to spare on the pi
     if *initial == true {
-        soc_value = ocv_calc(voltage, curve);
-        *initial = false;
+        soc_value = capacity;
     } else {
         soc_value = cc_calc();
     }
@@ -75,13 +76,7 @@ pub fn data_collection(voltage: f64, curve: Vec<f64>, v_buf: &mut Vec<f64>, c_bu
     
 }
 
-fn ocv_calc(voltage: f64, curve: Vec<f64>) ->  f64 {
-    let mut file = File::open("soctable");
-
-    let soc = 0.0;
-    return soc;
-}
-
+// TODO
 fn cc_calc() ->  f64 {
     let mut file = File::open("soctable");
 
@@ -89,18 +84,22 @@ fn cc_calc() ->  f64 {
     return soc;
 }
 
+// reads all the data on the file on startup. used for all initial calculations
 pub fn read_data() -> Array2<f64> {
     let mut file = File::open("soctable").expect("failed to open file");
 
+    // pulls the entire thing to a string
     let mut contents = String::new();
     file.read_to_string(&mut contents).expect("failed to retrieve file contents");
 
+    // splits the string into a single vector
     let content_values: Vec<f64> = contents
         .split_whitespace()
         .map(|c| c.parse().expect("failed to parse"))
         .collect();
 
-    let data_array = Array::from_shape_vec((2, 25), content_values).expect("failed to create array");
+    // builds a 2x100 array from the data in the string
+    let data_array = Array::from_shape_vec((2, 100), content_values).expect("failed to create array");
 
     return data_array;
 }
