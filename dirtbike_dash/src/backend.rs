@@ -1,11 +1,13 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
-    time::Duration, usize::MAX,
+    time::Duration
 };
 
 use crate::can::{self, bms_errors, bms_warnings};
 use crate::gps::SharedGpsState;
+use crate::soc::{self, data_collection};
+
 
 // scaler constants
 const MOTOR_TEMPERATURE_SCALE: f64     = 0.1;   // → C
@@ -102,12 +104,35 @@ pub fn get_error_code_strings(codes: u32) -> Vec<String> {
 
 // updates all the variables
 pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
+    // first pass check
+    let mut initial = true;
+
+    // read the data in the file to start
+    let soc_data = soc::read_data();
+
+    // buffers for the data collection rows
+    let mut v_buf: Vec<f64> = soc_data.row(0).to_vec();
+    let mut c_buf: Vec<f64> = soc_data.row(1).to_vec();
+
+    
+    let ocv_curve = soc::ocv_curve(soc_data);
     loop {
         // raw can data
         let raw = can::DATA.lock().unwrap().clone();
 
         // raw gps data
         let g = gps.lock().unwrap().clone();
+
+        // earlier access to certain values for the soc calculations. Otherwise there would be delay
+        let voltage = raw.pack_voltage as f64 * PACK_VOLTAGE_SCALE;
+        let current = raw.pack_current as f64 * PACK_CURRENT_SCALE;
+
+        // soc calculations
+        
+        let 
+
+        // updates soc values
+        soc_value = soc::data_collection(voltage, ocv_curve.clone(), &mut v_buf, &mut c_buf, &mut initial);
 
         // builds backend
         let codes = raw.bms_error_codes;
@@ -125,9 +150,9 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
             aux_percentage: raw.aux_percent         * AUX_PERCENT_SCALE,
 
             // Main pack
-            pack_soc:       raw.pack_state_of_charge as f64 * PACK_STATE_OF_CHARGE_SCALE,
-            pack_voltage:   raw.pack_voltage          as f64 * PACK_VOLTAGE_SCALE,
-            pack_current:   raw.pack_current          as f64 * PACK_CURRENT_SCALE,
+            pack_soc:       soc_value,
+            pack_voltage:   voltage,
+            pack_current:   current,
 
             // motor speed / bike speed from motor
             motor_speed:      raw.motor_speed as f64 * MOTOR_SPEED_SCALE,

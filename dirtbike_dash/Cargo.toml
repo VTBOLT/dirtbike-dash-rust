@@ -16,6 +16,10 @@ anyhow    = "1"
 bitflags   = "2.11.0"
 gpsd_client = {version = "0.1.5", optional = true}
 gpsd_proto = {version = "1.0.0", optional = true}
+ndarray = { version = "0.17.2"}
+num = {version = "0.4.3"}
+polyfit-rs = {version = "0.2.2"}
+fs2 = {version = "0.4.3"}
 
 [features]
 default = []
@@ -28,4 +32,7 @@ can = ["dep:can", "dep:socketcan"]
 
 # requires can working 
 sim = ["can"]
+
+# soc requires can obviously
+soc = ["can"]
 
