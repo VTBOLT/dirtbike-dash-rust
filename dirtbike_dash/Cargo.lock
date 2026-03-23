@@ -376,7 +376,6 @@ dependencies = [
  "gpsd",
  "gpsd_client",
  "gpsd_proto",
- "integrate",
  "ndarray",
  "num",
  "polyfit-rs",
@@ -636,17 +635,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "79cf5c93f93228cf8efb3ba362535fb11199ac548a09ce117c9b1adc3030d706"
 dependencies = [
  "rustversion",
-]
-
-[[package]]
-name = "integrate"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f9b38addf12bfd887f501a71c4086284bd9d88da92da67fcb0106400b7023f73"
-dependencies = [
- "itertools 0.13.0",
- "num",
- "num-traits",
 ]
 
 [[package]]
