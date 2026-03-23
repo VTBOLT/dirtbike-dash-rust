@@ -1,7 +1,7 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
-    time::Duration
+    time::{Duration, SystemTime, Instant}
 };
 
 use crate::can::{self, bms_errors, bms_warnings};
@@ -103,12 +103,11 @@ pub fn get_error_code_strings(codes: u32) -> Vec<String> {
 }
 
 // updates all the variables
-pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
-    // first pass check
-    let mut initial = true;
+pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_time: &Instant) {
 
     // read the data in the file to start
-    let soc_data = soc::read_data();
+    let soc_data = soc::read_soctable();
+    let max_cap = soc::read_socmax();
 
     // buffers for the data collection rows
     let mut v_buf: Vec<f64> = soc_data.row(0).to_vec();
@@ -132,7 +131,7 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
         let 
 
         // updates soc values
-        soc_value = soc::data_collection(voltage, ocv_curve.clone(), &mut v_buf, &mut c_buf, &mut initial);
+        soc_value = soc::data_collection(voltage, ocv_curve.clone(), &mut v_buf, &mut c_buf, &max_cap, &current, &initial_time);
 
         // builds backend
         let next = Backend {
@@ -190,11 +189,11 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState) {
 }
 
 // builds a mutex for the gps data
-pub fn new(gps: SharedGpsState) -> Arc<Mutex<Backend>> {
+pub fn new(gps: SharedGpsState, initial_time: Instant) -> Arc<Mutex<Backend>> {
     let shared: Arc<Mutex<Backend>> = Arc::new(Mutex::new(Backend::default()));
     let shared_clone = Arc::clone(&shared);
 
-    thread::spawn(move || update_vars(shared_clone, gps));
+    thread::spawn(move || update_vars(shared_clone, gps, &initial_time));
 
     shared
 }

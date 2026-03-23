@@ -9,10 +9,13 @@ mod sim;
 use std::{
     env,
     thread,
-    time::Duration,
+    time::{Duration, SystemTime, Instant},
 };
 
 fn main() {
+    // starts a system time clock
+    let initial_time = Instant::now();
+
     // if simulating, check vcan. DO NOT pass sim an argument for deployment, this will cause it to break
     let iface = env::args().nth(1).unwrap_or_else(|| {
         if cfg!(feature = "sim") { "vcan0".to_string() }
@@ -42,7 +45,7 @@ fn main() {
     }
 
     // assigns backend and adds the gps data. I may have done this wrong, this may also be why the gps data doesn't work but given the launch error I dont think so
-    let backend = backend::new(gps);
+    let backend = backend::new(gps, initial_time);
 
     // prints. please say it looks cool i put too much time into making it line up
     loop {

@@ -1,9 +1,15 @@
-use std::fs::{File, OpenOptions};
-use std::io::{BufWriter, Write, Seek, SeekFrom, BufReader, BufRead, Read};
+use bitflags::parser::from_str_truncate;
 use fs2::FileExt;
 use ndarray::{Array, Array2, arr2};
 use num::pow;
 use polyfit_rs::polyfit_rs::polyfit;
+use integrate::prelude::*;
+
+use std::{
+    fs::{File, OpenOptions},
+    io::{BufWriter, Write, Seek, SeekFrom, Read},
+    time::{SystemTime, Instant}
+};
 
 // creates a polynomial regression model to match the data points. Instead of using a standardized one, this should recalculate itself and generate a new one without need for update, at the cost of starup performance and some storage
 pub fn ocv_curve(soc_data: Array2<f64>) -> Vec<f64> {
@@ -27,13 +33,14 @@ pub fn ocv_curve(soc_data: Array2<f64>) -> Vec<f64> {
 // }
 
 // responsible for most everything
-pub fn data_collection(voltage: f64, curve: Vec<f64>, v_buf: &mut Vec<f64>, c_buf: &mut Vec<f64>, initial: &mut bool) -> f64 {
-    let mut soc_value;
+pub fn data_collection(voltage: f64, curve: Vec<f64>, v_buf: &mut Vec<f64>, c_buf: &mut Vec<f64>, max_cap: &f64, current: &f64, initial_time: &Instant) -> f64 {
+    let mut soc_value= 0.0;
 
     let file = OpenOptions::new().write(true).open("soctable").expect("failed read");
 
     // pulls the curve generated from previous instances. The bike will never be on long enough to regenerate a new curve and polyfit is kinda bulky
     let capacity = curve[0] + curve[1]*voltage + curve[2]*(pow(voltage, 2)) + curve[3]*(pow(voltage, 3)) + curve[4]*(pow(voltage, 4));
+
 
     let mut writer = BufWriter::new(file);
 
@@ -65,11 +72,15 @@ pub fn data_collection(voltage: f64, curve: Vec<f64>, v_buf: &mut Vec<f64>, c_bu
         c_buf.clear();
     }
 
+    if capacity > *max_cap {
+        edit_max_cap(&capacity);
+    }
+
     // calculates the ocv. It kinda bad but any other way to calculate the ocv once ten use coulomb counting would be much more performance taxing and I have plenty of memory to spare on the pi
-    if *initial == true {
+    if initial_time.elapsed().as_secs_f64() <= 1.0 {
         soc_value = capacity;
     } else {
-        soc_value = cc_calc();
+        soc_value = cc_calc(current, max_cap, &initial_time, &soc_value);
     }
 
     return soc_value;
@@ -77,15 +88,22 @@ pub fn data_collection(voltage: f64, curve: Vec<f64>, v_buf: &mut Vec<f64>, c_bu
 }
 
 // TODO
-fn cc_calc() ->  f64 {
-    let mut file = File::open("soctable");
+fn cc_calc(current: &f64, max_cap: &f64, initial_time: &Instant, initial_soc: &f64) ->  f64 {
+    let mut soc = *initial_soc;
+    let t = initial_time.elapsed().as_secs_f64();
+    let last_time = 0.0;
+    let last_current = 0.0;
 
-    let soc = 0.0;
+    // using trapezoidal method. SOC was already approximate enough that I'm happy to not use standard integration acorss 1000 or so points
+    let dt = t - last_time;
+    let avg_current = (current + last_current) / 2.0;
+    soc += (1.0/max_cap) * avg_current * dt;
+    
     return soc;
 }
 
 // reads all the data on the file on startup. used for all initial calculations
-pub fn read_data() -> Array2<f64> {
+pub fn read_soctable() -> Array2<f64> {
     let mut file = File::open("soctable").expect("failed to open file");
 
     // pulls the entire thing to a string
@@ -102,4 +120,27 @@ pub fn read_data() -> Array2<f64> {
     let data_array = Array::from_shape_vec((2, 100), content_values).expect("failed to create array");
 
     return data_array;
+}
+
+// reads all the data on the file on startup. used for all initial calculations
+pub fn read_socmax() -> f64 {
+    let mut file = File::open("socmax").expect("failed to open file");
+
+    // pulls the entire thing to a string
+    let mut contents = String::new();
+    file.read_to_string(&mut contents).expect("failed to retrieve file contents");
+
+    // splits the string into a single vector
+    let content_values: f64 = contents.parse::<f64>().expect("failed to parse");
+
+    return  content_values;
+}
+
+fn edit_max_cap(capacity: &f64) {
+    let file = OpenOptions::new().write(true).create(true).truncate(true).open("socmax").expect("failed read");
+
+    let mut writer = BufWriter::new(file);
+    writer.get_ref().lock_exclusive().expect("failed to lock");
+    writeln!(writer, "{}", capacity).expect("failed to write");
+    writer.get_ref().unlock().expect("failed to unlock");
 }
