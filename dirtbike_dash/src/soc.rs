@@ -36,7 +36,7 @@ pub fn data_collection(voltage: f64, curve: Vec<f64>, v_buf: &mut Vec<f64>, c_bu
 
     let file = OpenOptions::new().write(true).open("soctable").expect("failed read");
 
-    // pulls the curve generated from previous instances. The bike will never be on long enough to regenerate a new curve and polyfit is kinda bulky
+    // pulls the curve generated from previous instances. The bike will never be on long enough to justify regenerating a new curve and polyfit is kinda bulky
     let capacity = curve[0] + curve[1]*voltage + curve[2]*(pow(voltage, 2)) + curve[3]*(pow(voltage, 3)) + curve[4]*(pow(voltage, 4));
 
 
@@ -121,17 +121,19 @@ pub fn read_soctable() -> Array2<f64> {
 }
 
 // reads all the data on the file on startup. used for all initial calculations
-pub fn read_socmax() -> f64 {
+pub fn read_battery_props() -> Vec<f64> {
     let mut file = File::open("socmax").expect("failed to open file");
 
-    // pulls the entire thing to a string
     let mut contents = String::new();
     file.read_to_string(&mut contents).expect("failed to retrieve file contents");
 
     // splits the string into a single vector
-    let content_values: f64 = contents.parse::<f64>().expect("failed to parse");
+    let content_values: Vec<f64> = contents
+        .split_whitespace()
+        .map(|c| c.parse().expect("failed to parse"))
+        .collect();
 
-    return  content_values;
+    return content_values;
 }
 
 fn edit_max_cap(capacity: &f64) {

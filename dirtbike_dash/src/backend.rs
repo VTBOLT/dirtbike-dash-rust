@@ -107,7 +107,8 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
 
     // read the data in the file to start
     let soc_data = soc::read_soctable();
-    let max_cap = soc::read_socmax();
+    let battery_props = soc::read_battery_props();
+    let max_cap = battery_props[0];
 
     // buffers for the data collection rows
     let mut v_buf: Vec<f64> = soc_data.row(0).to_vec();
