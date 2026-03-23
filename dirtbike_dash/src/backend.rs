@@ -1,7 +1,7 @@
 use std::{
     sync::{Arc, Mutex},
     thread,
-    time::{Duration, SystemTime, Instant}
+    time::{Duration, Instant}
 };
 
 use crate::can::{self, bms_errors, bms_warnings};

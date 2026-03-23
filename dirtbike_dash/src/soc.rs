@@ -1,14 +1,12 @@
-use bitflags::parser::from_str_truncate;
 use fs2::FileExt;
-use ndarray::{Array, Array2, arr2};
+use ndarray::{Array, Array2};
 use num::pow;
 use polyfit_rs::polyfit_rs::polyfit;
-use integrate::prelude::*;
 
 use std::{
     fs::{File, OpenOptions},
     io::{BufWriter, Write, Seek, SeekFrom, Read},
-    time::{SystemTime, Instant}
+    time::{Instant}
 };
 
 // creates a polynomial regression model to match the data points. Instead of using a standardized one, this should recalculate itself and generate a new one without need for update, at the cost of starup performance and some storage

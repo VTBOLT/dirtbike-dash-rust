@@ -9,8 +9,9 @@
 ## TODO Features
 
 - Read actual can data on a raspberry pi
-- Isn't recieving gps data right now?
-- QML frontend is todo but that also isn't my task so
+- Redo GPS in human code
+- Slint frontend but that's up to Cayden
+- Finish up SOC
 
 ## Setup Instructions
 
@@ -35,10 +36,10 @@ You will also have to clone the repo and manually cd into `./dirtbike-dash` befo
 <details>
 <summary><h3 style="display: inline">Only Windows</h3></summary>
 
-- To build on windows, your options are either to build in visual studio, or build in WSL. 
+- To build on windows, your options are either to build in visual studio, or build in WSL.
 - I don't recommend Visual Studio and cannot help, probably use WSL
-- For WSL, windows, rust, and VS Code each give guides for installing and using their software in WSL, follow those. 
-- You probably still won't be able to build with features, but otherwise follow the LInux instructions inside the WSL window.
+- For WSL, windows, rust, and VS Code each give guides for installing and using their software in WSL, follow those.
+- You probably still won't be able to build with features, but otherwise follow the Linux instructions inside the WSL window.
 
 </details>
 
@@ -75,16 +76,28 @@ Should require both the gpsd and gpsd_proto packages to be installed. Should not
 
 #### Sim
 
-Sim is the dedicated testing argument. 
+Sim is the dedicated testing argument.
 <br>
 It requires access to a virtual can port, which will have to be set up independently. I am not aware of setup instruction for non-linux systems if possible at all, but vcan setup instructions are located at the head of `./dirtbike-dash/src/sim.rs`.
+<br>
+For Linux systems, simply run `bash PATH/vcan.sh` in your terminal, where PATH is the path to this repo. It contains the few lines needed to set it up automatically
 <br>
 Sim does not support simulated data for gps and only simulates data. It does not collect or manage any actual data.
 
 ---
 
+#### SOC
+
+SOC, or state of charge, tells us how much battery is left of the total capacity
+<br>
+Notice that it will only ever be an estimate, getting exact values is impossible since batteries aren't perfectly consistent when new, let alone after losing some health
+<br>
+A more in-depth rundown of how it is calculated can be found on the wiki soon
+
+---
+
 ### Project by:
 
-- Blake Gaither (Backend)
+- Blake Gaither (All Backend -GPS)
 - Cayden Cubbin (Frontend)
 - Max Lupariello (GPS)
