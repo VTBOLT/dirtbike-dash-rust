@@ -4,7 +4,7 @@
 ## Implemented Features
 
 - Reads virtualized can network on latop and places results within a data structure for later use. Temporarily prints to console
-- State of charge may be completed. In any case, its reday for me to manually supply initial data and start testing
+- State of charge may be completed. In any case, its ready for me to manually supply initial data and start testing
 
 ## TODO Features
 
