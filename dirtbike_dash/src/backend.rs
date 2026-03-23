@@ -108,11 +108,31 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
     // read the data in the file to start
     let soc_data = soc::read_soctable();
     let battery_props = soc::read_battery_props();
-    let max_cap = battery_props[0];
+    let mut max_cap= 0.0;
+
+    // match use cases. add as needed
+    match cfg!(feature = "db") {
+        true => {
+        max_cap = battery_props[0];
+        },
+        false => (),
+    }
+    match cfg!(feature = "b6") {
+        true => {
+        max_cap = battery_props[0];
+        },
+        false => (),
+    }
+    match cfg!(feature = "bb") {
+        true => {
+        max_cap = battery_props[0];
+        },
+        false => (),
+    }
 
     // buffers for the data collection rows
-    let mut v_buf: Vec<f64> = soc_data.row(0).to_vec();
-    let mut c_buf: Vec<f64> = soc_data.row(1).to_vec();
+    let mut v_buf: Vec<f64> = soc_data.row(1).to_vec();
+    let mut c_buf: Vec<f64> = soc_data.row(2).to_vec();
 
     
     let ocv_curve = soc::ocv_curve(soc_data);
@@ -146,7 +166,7 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
 
             // Aux battery
             aux_voltage:    raw.aux_voltage as f64 * AUX_VOLTAGE_SCALE,
-            aux_percentage: raw.aux_percent         * AUX_PERCENT_SCALE,
+            aux_percentage: raw.aux_percent        * AUX_PERCENT_SCALE,
 
             // Main pack
             pack_soc:       soc_value * PACK_STATE_OF_CHARGE_SCALE,
@@ -186,6 +206,10 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
         *shared.lock().unwrap() = next;
 
         thread::sleep(Duration::from_millis(1));
+
+        if 1==0 {
+        soc::write_soc_table(&v_buf, &c_buf); // writes the soc table on shutdown. Or, it will I just c=havent figured out implementation.
+        }
     }
 }
 

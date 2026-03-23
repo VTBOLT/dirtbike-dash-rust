@@ -21,6 +21,7 @@ num = {version = "0.4.3"}
 polyfit-rs = {version = "0.2.2"}
 fs2 = {version = "0.4.3"}
 integrate = {version = "0.2"}
+round = {version = "0.1.2"}
 
 [features]
 default = []
@@ -36,4 +37,9 @@ sim = ["can"]
 
 # soc requires can obviously
 soc = ["can"]
+
+# used for the match cases for the bike its implemented on
+db = ["soc"] # uses values for dirtbike
+b6 = ["soc"] # uses values for bolt 6. More error, packs are old
+bb = ["soc"] # uses values for baby bolt.
 

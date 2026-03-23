@@ -380,6 +380,7 @@ dependencies = [
  "ndarray",
  "num",
  "polyfit-rs",
+ "round",
  "socketcan 3.5.0",
 ]
 

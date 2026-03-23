@@ -2,10 +2,11 @@ use fs2::FileExt;
 use ndarray::{Array, Array2};
 use num::pow;
 use polyfit_rs::polyfit_rs::polyfit;
+use round::{round_up};
 
 use std::{
     fs::{File, OpenOptions},
-    io::{BufWriter, Write, Seek, SeekFrom, Read},
+    io::{BufWriter, Write, Read},
     time::{Instant}
 };
 
@@ -34,45 +35,11 @@ pub fn ocv_curve(soc_data: Array2<f64>) -> Vec<f64> {
 pub fn data_collection(voltage: f64, curve: Vec<f64>, v_buf: &mut Vec<f64>, c_buf: &mut Vec<f64>, max_cap: &f64, current: &f64, initial_time: &Instant) -> f64 {
     let mut soc_value= 0.0;
 
-    let file = OpenOptions::new().write(true).open("soctable").expect("failed read");
-
-    // pulls the curve generated from previous instances. The bike will never be on long enough to justify regenerating a new curve and polyfit is kinda bulky
+    // pulls the curve generated from previous instances. The bike will never be on long enough to justify regenerating a new curve while online and polyfit is kinda bulky
     let capacity = curve[0] + curve[1]*voltage + curve[2]*(pow(voltage, 2)) + curve[3]*(pow(voltage, 3)) + curve[4]*(pow(voltage, 4));
 
-
-    let mut writer = BufWriter::new(file);
-
-    v_buf.push(voltage);
-    c_buf.push(capacity);
-
-    // writes 2 lines onto the file of 100 points each for ocv curve calculations
-    if v_buf.len() >= 100 {
-        writer.get_ref().lock_exclusive().expect("failed to lock");
-        writer.seek(SeekFrom::Start(0)).expect("failed to seek");
-
-        // Write all 100 voltages on line 1
-        for v in v_buf.iter() {
-            write!(writer, "{} ", v).expect("failed to write");
-        }
-        writeln!(writer, "").expect("failed to write newline");
-
-        // Write all 100 capacity values on line 2
-        for c in c_buf.iter() {
-            write!(writer, "{} ", c).expect("failed to write");
-        }
-        writeln!(writer, "").expect("failed to write newline");
-
-        writer.flush().expect("failed to flush");
-        writer.get_ref().unlock().expect("failed to unlock");
-
-        // Clear buffers for next cycle
-        v_buf.clear();
-        c_buf.clear();
-    }
-
-    if capacity > *max_cap {
-        edit_max_cap(&capacity);
-    }
+    v_buf[round_up(capacity, 0) as usize] = voltage; // updates the buffer. Faster than file writes
+    c_buf[round_up(capacity, 0) as usize] = capacity; // updates the buffer. Faster than file writes
 
     // calculates the ocv. It kinda bad but any other way to calculate the ocv once ten use coulomb counting would be much more performance taxing and I have plenty of memory to spare on the pi
     if initial_time.elapsed().as_secs_f64() <= 1.0 {
@@ -115,7 +82,7 @@ pub fn read_soctable() -> Array2<f64> {
         .collect();
 
     // builds a 2x100 array from the data in the string
-    let data_array = Array::from_shape_vec((2, 100), content_values).expect("failed to create array");
+    let data_array = Array::from_shape_vec((3, 100), content_values).expect("failed to create array");
 
     return data_array;
 }
@@ -136,11 +103,30 @@ pub fn read_battery_props() -> Vec<f64> {
     return content_values;
 }
 
-fn edit_max_cap(capacity: &f64) {
-    let file = OpenOptions::new().write(true).create(true).truncate(true).open("socmax").expect("failed read");
+// fn edit_max_cap(capacity: &f64) {
+//     let file = OpenOptions::new().write(true).create(true).truncate(true).open("socmax").expect("failed read");
+
+//     let mut writer = BufWriter::new(file);
+//     writer.get_ref().lock_exclusive().expect("failed to lock");
+//     writeln!(writer, "{}", capacity).expect("failed to write");
+//     writer.get_ref().unlock().expect("failed to unlock");
+// }
+
+pub fn write_soc_table(voltages: &Vec<f64>, capacities: &Vec<f64>) {
+    let file = OpenOptions::new().write(true).create(true).truncate(true).open("soctable").expect("failed read");
 
     let mut writer = BufWriter::new(file);
     writer.get_ref().lock_exclusive().expect("failed to lock");
-    writeln!(writer, "{}", capacity).expect("failed to write");
+    for v in voltages.iter() {
+        write!(writer, "{} ", v).expect("failed to write");
+    }
+    writeln!(writer, "").expect("failed to write newline");
+
+    for c in capacities.iter() {
+        write!(writer, "{} ", c).expect("failed to write");
+    }
+    writeln!(writer, "").expect("failed to write newline");
+    writer.flush().expect("failed to flush");
     writer.get_ref().unlock().expect("failed to unlock");
+
 }
