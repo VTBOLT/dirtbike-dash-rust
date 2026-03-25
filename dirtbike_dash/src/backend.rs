@@ -119,13 +119,13 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
     }
     match cfg!(feature = "b6") {
         true => {
-        max_cap = battery_props[0];
+        max_cap = battery_props[1];
         },
         false => (),
     }
     match cfg!(feature = "bb") {
         true => {
-        max_cap = battery_props[0];
+        max_cap = battery_props[2];
         },
         false => (),
     }
