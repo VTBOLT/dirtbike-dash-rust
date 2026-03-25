@@ -1,0 +1,24 @@
+export component MainWindow inherits Window {
+    title: "Dash Test";
+    width: 800px;
+    height: 480px;
+    background: #0d0d0d;
+
+    // internal state tracking whether light is on
+    property <bool> light-on: false;
+
+    // capture keyboard input
+    // forward-focus: key-handler;
+
+    // key-handler := FocusScope {
+    //     key-pressed(event) => {
+    //         if event.text == "[" {
+    //             light-on = true;
+    //         }
+    //         if event.text == "]" {
+    //             light-on = false;
+    //         }
+    //         accept
+    //     }
+    // }
+}

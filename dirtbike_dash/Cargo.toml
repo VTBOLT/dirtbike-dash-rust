@@ -21,6 +21,8 @@ num = {version = "0.4.3"}
 polyfit-rs = {version = "0.2.2"}
 fs2 = {version = "0.4.3"}
 round = {version = "0.1.2"}
+slint = "1.15.1"
+slint-build = "1.15.1"
 
 [features]
 default = []
