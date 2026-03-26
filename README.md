@@ -96,6 +96,16 @@ A more in-depth rundown of how it is calculated can be found on the wiki soon
 
 ---
 
+#### Build
+
+Dedicated build mode for terminal based testing. Avoids building slint features, outputs results as tui in terminal
+
+---
+
+#### Release
+
+Build mode for release. Builds slint gui features. Must be passed to test gui.
+
 ### Project by:
 
 - Blake Gaither (All Backend -GPS)

@@ -39,6 +39,9 @@ sim = ["can"]
 # soc requires can obviously
 soc = ["can"]
 
+release = []
+debug = []
+
 # used for the match cases for the bike its implemented on
 db = ["soc"] # uses values for dirtbike
 b6 = ["soc"] # uses values for bolt 6. More error, packs are old
