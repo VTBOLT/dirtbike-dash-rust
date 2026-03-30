@@ -8,7 +8,6 @@ name="test"
 path="src/main.rs"
 
 [dependencies]
-cxx-qt = "0.8.1"
 gpsd = "0.1.2"
 can = { version = "0.2.0", optional = true }
 socketcan = { version = "3.5", optional = true }
@@ -22,6 +21,8 @@ polyfit-rs = {version = "0.2.2"}
 fs2 = {version = "0.4.3"}
 round = {version = "0.1.2"}
 slint = "1.15.1"
+
+[build-dependencies]
 slint-build = "1.15.1"
 
 [features]

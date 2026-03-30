@@ -278,7 +278,7 @@ pub fn run(iface: &str) -> anyhow::Result<()> {
                 let id = frame.raw_id(); // picks out the id 
                 let d  = frame.data(); // picks out the data matching the id
 
-                // sets a data lock. if you don't get how this works, I would recommend the rust documentation. it contains a protected copy of the data basically
+                // requests a locked reference to the data
                 let mut guard = DATA.lock().unwrap();
                 process_frame(id, d, &mut guard, &mut low_avg, &mut high_avg);
             }
