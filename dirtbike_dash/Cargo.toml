@@ -12,7 +12,7 @@ gpsd = "0.1.2"
 can = { version = "0.2.0", optional = true }
 socketcan = { version = "3.5", optional = true }
 anyhow    = "1"
-bitflags   = "2.11.0"
+bitflags   = "2.11.1"
 gpsd_client = {version = "0.1.5", optional = true}
 gpsd_proto = {version = "1.0.0", optional = true}
 ndarray = { version = "0.17.2"}
@@ -20,10 +20,11 @@ num = {version = "0.4.3"}
 polyfit-rs = {version = "0.2.2"}
 fs2 = {version = "0.4.3"}
 round = {version = "0.1.2"}
-slint = "1.15.1"
+slint = "1.16.0"
+slint-build = "1.16.0"
 
 [build-dependencies]
-slint-build = "1.15.1"
+slint-build = "1.16.0"
 
 [features]
 default = []
