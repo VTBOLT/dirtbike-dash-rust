@@ -49,12 +49,14 @@ You will also have to clone the repo and manually cd into `./dirtbike-dash` befo
 <summary><h3 style="display: inline">Linux Systems</h3></summary>
 
 - To build on linux systems without dependencies, simply pass `cargo build` or `cargo run` as before. Note that running without dependencies will not work
-- To build with dependencies, pass `cargo build --features "can gps sim"`. Descriptions of each optional feature will be below
+- To build with dependencies, pass `cargo build --features "can gps sim soc [BIKE] [MODE]"`. Descriptions of each optional feature will be below
 - The list of dependencies can be found in `./dirtbike-dash/Cargo.toml` as well as the descriptions below, though they will have to be manually acquired through your package manager
 
 </details>
 
 ### Optional Features
+
+Pass optional features with `--features "[FEATURES]"`
 
 #### Can / SocketCAN
 
@@ -96,9 +98,13 @@ A more in-depth rundown of how it is calculated can be found on the wiki soon
 
 ---
 
-#### Build
+#### Debug
 
 Dedicated build mode for terminal based testing. Avoids building slint features, outputs results as tui in terminal
+
+#### Release 
+
+Builds the gui based on slint
 
 ---
 
