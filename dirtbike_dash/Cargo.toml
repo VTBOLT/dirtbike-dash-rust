@@ -10,8 +10,8 @@ path="src/main.rs"
 [dependencies]
 gpsd = "0.1.2"
 can = { version = "0.2.0", optional = true }
-socketcan = { version = "3.5", optional = true }
-anyhow    = "1"
+socketcan = { version = "3.5.0", optional = true }
+anyhow    = "1.0.102"
 bitflags   = "2.11.1"
 gpsd_client = {version = "0.1.5", optional = true}
 gpsd_proto = {version = "1.0.0", optional = true}
