@@ -70,7 +70,7 @@ fn cc_calc(current: &f64, max_cap: &f64, initial_time: &Instant, initial_soc: &f
 
 // reads all the data on the file on startup. used for all initial calculations
 pub fn read_soctable() -> Array2<f64> {
-    let mut file = File::open("~/.local/share/dashboard/soctable.txt").expect("failed to open file");
+    let mut file = File::open("/home/kurai/.local/share/dashboard/soctable.txt").expect("failed to open file");
 
     // pulls the entire thing to a string
     let mut contents = String::new();
@@ -83,14 +83,14 @@ pub fn read_soctable() -> Array2<f64> {
         .collect();
 
     // builds a 2x100 array from the data in the string
-    let data_array = Array::from_shape_vec((2, 100), content_values).expect("failed to create array");
+    let data_array = Array2::from_shape_vec((2, 10), content_values).expect("failed to create array");
 
     return data_array;
 }
 
 // reads all the data on the file on startup. used for all initial calculations
 pub fn read_battery_props() -> Vec<f64> {
-    let mut file = File::open("~/.local/share/dashboard/battery_props.txt").expect("failed to open file");
+    let mut file = File::open("/home/kurai/.local/share/dashboard/battery_props.txt").expect("failed to open file");
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).expect("failed to retrieve file contents");
