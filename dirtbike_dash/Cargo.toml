@@ -20,11 +20,11 @@ num = {version = "0.4.3"}
 polyfit-rs = {version = "0.2.2"}
 fs2 = {version = "0.4.3"}
 round = {version = "0.1.2"}
-slint = "1.16.0"
-slint-build = "1.16.0"
+slint = {version = "1.16.0", optional = true}
+slint-build = { version = "1.16.0", optional = true }
 
 [build-dependencies]
-slint-build = "1.16.0"
+slint-build = {version = "1.16.0", optional = true}
 
 [features]
 default = []
@@ -48,4 +48,5 @@ debug = []
 db = ["soc"] # uses values for dirtbike
 b6 = ["soc"] # uses values for bolt 6. More error, packs are old
 bb = ["soc"] # uses values for baby bolt.
+slint-build = ["dep:slint-build"]
 

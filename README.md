@@ -80,7 +80,7 @@ Should require both the gpsd and gpsd_proto packages to be installed. Should not
 
 Sim is the dedicated testing argument.
 <br>
-It requires access to a virtual can port, which will have to be set up independently. I am not aware of setup instruction for non-linux systems if possible at all, but vcan setup instructions are located at the head of `./dirtbike-dash/src/sim.rs`.
+It requires access to a virtual can port, which will have to be set up independently. I am not aware of setup instruction for non-linux systems if possible at all, but the vcan setup instructions are located in `./vcan.sh`.
 <br>
 For Linux systems, simply run `bash PATH/vcan.sh` in your terminal, where PATH is the path to this repo. It contains the few lines needed to set it up automatically
 <br>
@@ -104,13 +104,7 @@ Dedicated build mode for terminal based testing. Avoids building slint features,
 
 #### Release 
 
-Builds the gui based on slint
-
----
-
-#### Release
-
-Build mode for release. Builds slint gui features. Must be passed to test gui.
+Builds the gui based on slint (*NOT BUILT CURRENTLY GO WHINE TO CAYDEN*)
 
 ### Project by:
 

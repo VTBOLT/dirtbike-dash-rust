@@ -1,10 +1,3 @@
-//// VCAN Setup instructions
-/// mandatory to use the sim lmao. probably only supports linux so..
-
-// sudo modprobe vcan
-// sudo ip link add dev vcan0 type vcan
-// sudo ip link set up vcan0
-
 use socketcan::{CanDataFrame, CanSocket, EmbeddedFrame, Socket, StandardId};
 use std::{thread, time::Duration};
 

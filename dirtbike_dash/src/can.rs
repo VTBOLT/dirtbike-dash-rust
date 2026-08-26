@@ -8,24 +8,24 @@ pub const SAFEST_LOW_CELL_VOLTAGE: f64 = 3.0;
 
 // set all the can ids
 pub mod can_ids {
-    pub const AUX_BATTERY: u32         = 0x700;
-    pub const INFO: u32                = 0x6B0;
+    pub const AUX_BATTERY: u32           = 0x700;
+    pub const INFO: u32                  = 0x6B0;
     pub const CELL_MAX_MIN_VOLTAGES: u32 = 0x6B3;
-    pub const MAIN_PACK_TEMP: u32      = 0x6B4;
-    pub const BMS_ERROR_CODES: u32     = 0x6B6;
-    pub const MOTOR_TEMP: u32          = 0xA2;
-    pub const BMS_TEMP: u32            = 0x6B1;
-    pub const MC_TEMP: u32             = 0xA0;
-    pub const RPM: u32                 = 0xA5;
-    pub const SPEED: u32               = 0x00;
-    pub const MC_FAULTS: u32           = 0x0AB;
-    pub const INTERNAL_STATES: u32     = 0x0AA;
-    pub const ACC_SIGNAL: u32          = 0x706;
+    pub const MAIN_PACK_TEMP: u32        = 0x6B4;
+    pub const BMS_ERROR_CODES: u32       = 0x6B6;
+    pub const MOTOR_TEMP: u32            = 0xA2;
+    pub const BMS_TEMP: u32              = 0x6B1;
+    pub const MC_TEMP: u32               = 0xA0;
+    pub const RPM: u32                   = 0xA5;
+    pub const SPEED: u32                 = 0x00;
+    pub const MC_FAULTS: u32             = 0x0AB;
+    pub const INTERNAL_STATES: u32       = 0x0AA;
+    pub const ACC_SIGNAL: u32            = 0x706;
 }
 
 // detecting bms errors & warnings
 pub mod bms_warnings {
-    pub const DISCHARGE_LIMIT_ENFORCEMENT: u32  = 1 << 0;
+    pub const DISCHARGE_LIMIT_ENFORCEMENT: u32   = 1 << 0;
     pub const CHARGER_SAFETY_RELAY: u32          = 1 << 1;
     pub const INTERNAL_HEATSINK_THERMISTOR: u32  = 1 << 3;
     pub const CELL_BALANCING_STUCK_OFF: u32      = 1 << 9;
