@@ -131,8 +131,8 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
     }
 
     // buffers for the data collection rows
-    let mut v_buf: Vec<f64> = soc_data.row(1).to_vec();
-    let mut c_buf: Vec<f64> = soc_data.row(2).to_vec();
+    let mut v_buf: Vec<f64> = soc_data.row(0).to_vec();
+    let mut c_buf: Vec<f64> = soc_data.row(1).to_vec();
 
     
     let ocv_curve = soc::ocv_curve(soc_data);

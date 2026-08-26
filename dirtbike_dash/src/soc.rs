@@ -14,8 +14,8 @@ const POLY_DEGREE: usize = 10;
 
 // creates a polynomial regression model to match the data points. Instead of using a standardized one, this should recalculate itself and generate a new one without need for update, at the cost of starup performance and some storage
 pub fn ocv_curve(soc_data: Array2<f64>) -> Vec<f64> {
-    let voltage_data: Vec<f64> = soc_data.row(1).to_vec();
-    let cap_data: Vec<f64> = soc_data.row(2).to_vec();
+    let voltage_data: Vec<f64> = soc_data.row(0).to_vec();
+    let cap_data: Vec<f64> = soc_data.row(1).to_vec();
 
     let ocv_coeffs = polyfit(&voltage_data, &cap_data, POLY_DEGREE).expect("polyfit failed");
 
@@ -82,8 +82,10 @@ pub fn read_soctable() -> Array2<f64> {
         .map(|c| c.parse().expect("failed to parse"))
         .collect();
 
-    // builds a 2x100 array from the data in the string
-    let data_array = Array2::from_shape_vec((2, 10), content_values).expect("failed to create array");
+    // builds a 2xN array from the data in the string (row 0 = voltages, row 1 = capacities)
+    let cols = content_values.len() / 2;
+    assert!(cols > 0 && content_values.len() == 2 * cols, "soctable.txt must contain two equal-length rows of numbers");
+    let data_array = Array2::from_shape_vec((2, cols), content_values).expect("failed to create array");
 
     return data_array;
 }
