@@ -6,9 +6,33 @@
 // ~30x/sec by reading the shared `backend::Backend` snapshot. Nothing in this file
 // talks to CAN/GPS directly — it only renders whatever is in `data`.
 //
+// Menus / FSM: `MainWindow` holds `property <Menu> menu` and swaps which screen is
+// mounted. The FocusScope maps keys to transitions. Each menu key is a toggle:
+// press it to enter that menu, press the same key again to return to `main`.
+//   q  quit        d  debug        f  faults
+//   t  temps       p  powertrain   g  gps
+// Rust does not know or care which menu is active — it always fills the same `data`.
+// Add a menu: extend the `Menu` enum, add a `<Name>Menu` component, mount it with an
+// `if menu == Menu.<name>` block, and add a key case in `nav(...)`.
+//
+// Easter egg: mashing all five menu keys (d f t p g) inside a 700 ms window opens
+// the hidden `game` menu. `nav()` accumulates a bitmask in `chord`; `chord-timer`
+// clears it once the window lapses. Any menu key then leaves the game.
+//
 // To surface a new value: add a field to `DashData` here, then set it in
 // `run_ui`'s timer closure (Slint generates the matching Rust struct + setter).
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Which screen is mounted. Boot state is `main`. `game` is the hidden chord menu.
+export enum Menu {
+    main,
+    debug,
+    fault,
+    temp,
+    powertrain,
+    gps,
+    game,
+}
 
 // Snapshot of everything the dash renders. Mirrors a subset of backend::Backend.
 // Numeric fields are f32 (Slint `float`); anything needing precision or an
@@ -34,10 +58,13 @@ export struct DashData {
     bms-fault: bool,
     bms-warning: bool,
     bms-error: bool,
+    bms-error-codes: string, // raw code bitfield, pre-formatted "0x00ABCD"
     gps-pos: string,         // "lat, lon" pre-formatted
     altitude-m: float,
     heading: string,         // "123.4" or "---"
     gps-fix: bool,
+    gps-fix-mode: int,       // 0 = none, 2 = 2D, 3 = 3D
+    gps-time-s: float,       // gpsd timestamp, epoch seconds
     time-active: float,      // seconds since boot
 }
 
@@ -48,46 +75,6 @@ export global Fmt {
     }
     pure public function n1(v: float) -> string {
         return "\{Math.round(v * 10) / 10}";
-    }
-}
-
-// one labelled telemetry tile
-component Stat inherits Rectangle {
-    in property <string> label;
-    in property <string> value;
-    in property <string> unit;
-    in property <bool> warn: false;
-    in property <bool> alarm: false;
-
-    background: root.alarm ? #3a0f0f : (root.warn ? #3a300f : #141414);
-    border-radius: 6px;
-    border-width: 1px;
-    border-color: root.alarm ? #ff4d4d : (root.warn ? #ffcc33 : #262626);
-
-    VerticalLayout {
-        padding: 8px;
-        spacing: 2px;
-        Text {
-            text: root.label;
-            color: #8a8a8a;
-            font-size: 11px;
-        }
-        HorizontalLayout {
-            alignment: start;
-            spacing: 3px;
-            Text {
-                text: root.value;
-                color: root.alarm ? #ff6b6b : (root.warn ? #ffd766 : #f2f2f2);
-                font-size: 20px;
-                font-weight: 700;
-            }
-            Text {
-                text: root.unit;
-                color: #6a6a6a;
-                font-size: 11px;
-                vertical-alignment: bottom;
-            }
-        }
     }
 }
 
@@ -115,6 +102,675 @@ component Flag inherits Rectangle {
     }
 }
 
+// vertical fill bar, 0..100, fills from the bottom up
+component VBar inherits Rectangle {
+    in property <float> value;
+    in property <brush> fill: #35c759;
+
+    background: #000000;
+    border-radius: 8px;
+    border-width: 1px;
+    border-color: #262626;
+    clip: true;
+
+    Rectangle {
+        width: 100%;
+        height: parent.height * clamp(root.value, 0, 100) / 100;
+        y: parent.height - self.height;
+        background: root.fill;
+        border-radius: 8px;
+    }
+}
+
+// one "label : value" line for the debug list
+component Kv inherits HorizontalLayout {
+    in property <string> k;
+    in property <string> v;
+    in property <bool> alarm: false;
+
+    height: 24px;
+    spacing: 6px;
+    Text {
+        text: root.k;
+        color: #8a8a8a;
+        font-size: 13px;
+        vertical-alignment: center;
+        width: 130px;
+    }
+    Text {
+        text: root.v;
+        color: root.alarm ? #ff6b6b : #f2f2f2;
+        font-size: 13px;
+        font-weight: 600;
+        vertical-alignment: center;
+    }
+}
+
+// labelled readout tile: caption on top, big value + unit below
+component Tile inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <string> unit;
+    in property <bool> warn: false;
+    in property <bool> alarm: false;
+
+    background: root.alarm ? #3a0f0f : (root.warn ? #3a300f : #141414);
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: root.alarm ? #ff4d4d : (root.warn ? #ffcc33 : #262626);
+
+    VerticalLayout {
+        padding: 10px;
+        spacing: 3px;
+        Text {
+            text: root.label;
+            color: #8a8a8a;
+            font-size: 12px;
+        }
+        HorizontalLayout {
+            alignment: start;
+            spacing: 4px;
+            Text {
+                text: root.value;
+                color: root.alarm ? #ff6b6b : (root.warn ? #ffd766 : #f2f2f2);
+                font-size: 24px;
+                font-weight: 700;
+            }
+            Text {
+                text: root.unit;
+                color: #6a6a6a;
+                font-size: 12px;
+                vertical-alignment: bottom;
+            }
+        }
+    }
+}
+
+// large green/amber/red status box for a single fault or warning line
+component FaultBox inherits Rectangle {
+    in property <string> label;
+    in property <bool> active;
+    in property <bool> is-warning: false;   // amber (not red) when active
+
+    border-radius: 8px;
+    border-width: 2px;
+    background: !root.active ? #102410
+        : (root.is-warning ? #3a2e0a : #3a0f0f);
+    border-color: !root.active ? #1f7a34
+        : (root.is-warning ? #ffcc33 : #ff3b3b);
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+        Text {
+            text: root.label;
+            horizontal-alignment: center;
+            color: #d8d8d8;
+            font-size: 15px;
+            font-weight: 700;
+        }
+        Text {
+            text: !root.active ? "OK" : (root.is-warning ? "WARNING" : "FAULT");
+            horizontal-alignment: center;
+            color: !root.active ? #35c759 : (root.is-warning ? #ffcc33 : #ff5b5b);
+            font-size: 20px;
+            font-weight: 800;
+        }
+    }
+}
+
+// small pill for one active BMS fault code
+component Chip inherits Rectangle {
+    in property <string> text;
+    height: 22px;
+    background: #2a0f0f;
+    border-radius: 4px;
+    border-width: 1px;
+    border-color: #ff4d4d;
+    HorizontalLayout {
+        padding-left: 7px;
+        padding-right: 7px;
+        Text {
+            text: root.text;
+            color: #ffb3b3;
+            font-size: 11px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+// ── main menu: what the rider sees while riding ───────────────────────────────
+// throttle (left) · big GPS speed (center) · SOC (right) · alert lights on top.
+// Deliberately sparse — full telemetry lives in the debug menu. Layout is a
+// placeholder; the visual design gets revisited later.
+component MainMenu inherits Rectangle {
+    in property <DashData> data;
+    background: #0d0d0d;
+
+    VerticalLayout {
+        padding: 16px;
+        spacing: 12px;
+
+        // alert lights
+        HorizontalLayout {
+            height: 30px;
+            spacing: 8px;
+            Rectangle {
+                width: 120px;
+                border-radius: 6px;
+                background: root.data.status == "FAULT" ? #ff3b3b
+                    : (root.data.status == "Active" ? #1f7a34 : #1c1c1c);
+                Text {
+                    text: root.data.status;
+                    color: white;
+                    font-size: 15px;
+                    font-weight: 700;
+                }
+            }
+            Flag { label: "MOTOR"; active: root.data.motor-on; }
+            Flag { label: "MC FAULT"; active: root.data.mc-fault; }
+            Flag { label: "BMS FAULT"; active: root.data.bms-fault; }
+            Flag { label: "BMS WARN"; active: root.data.bms-warning; }
+            Flag { label: "BMS ERR"; active: root.data.bms-error; }
+            Flag { label: "GPS"; active: root.data.gps-fix; }
+        }
+
+        HorizontalLayout {
+            spacing: 16px;
+
+            // left: throttle
+            VerticalLayout {
+                width: 140px;
+                spacing: 8px;
+                Text {
+                    text: "THROTTLE";
+                    color: #8a8a8a;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                }
+                VBar { value: root.data.throttle; fill: #3b82f6; }
+                Text {
+                    text: "\{Fmt.n0(root.data.throttle)} %";
+                    color: white;
+                    font-size: 22px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+            }
+
+            // center: speed from GPS
+            VerticalLayout {
+                alignment: center;
+                Text {
+                    text: Fmt.n0(root.data.speed-gps);
+                    color: white;
+                    font-size: 180px;
+                    font-weight: 800;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "MPH";
+                    color: #7a7a7a;
+                    font-size: 24px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+            }
+
+            // right: state of charge
+            VerticalLayout {
+                width: 140px;
+                spacing: 8px;
+                Text {
+                    text: "SOC";
+                    color: #8a8a8a;
+                    font-size: 14px;
+                    horizontal-alignment: center;
+                }
+                VBar {
+                    value: root.data.soc;
+                    fill: root.data.soc < 15 ? #ff3b3b
+                        : (root.data.soc < 30 ? #ffcc33 : #35c759);
+                }
+                Text {
+                    text: "\{Fmt.n0(root.data.soc)} %";
+                    color: white;
+                    font-size: 22px;
+                    font-weight: 700;
+                    horizontal-alignment: center;
+                }
+            }
+        }
+    }
+}
+
+// ── debug menu: every field of the DashData table, plainly ────────────────────
+component DebugMenu inherits Rectangle {
+    in property <DashData> data;
+    in property <[string]> bms-errors;
+    background: #0d0d0d;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 8px;
+
+        Text {
+            text: "DEBUG   ·   \{root.data.status}   ·   t+\{Fmt.n1(root.data.time-active)} s";
+            color: #d0d0d0;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        HorizontalLayout {
+            spacing: 24px;
+
+            VerticalLayout {
+                spacing: 2px;
+                alignment: start;
+                Kv { k: "Speed (motor)"; v: "\{Fmt.n1(root.data.speed-mph)} mph"; }
+                Kv { k: "Speed (GPS)"; v: "\{Fmt.n1(root.data.speed-gps)} mph"; }
+                Kv { k: "Motor RPM"; v: Fmt.n0(root.data.motor-rpm); }
+                Kv { k: "Throttle"; v: "\{Fmt.n0(root.data.throttle)} %"; }
+                Kv { k: "Pack SOC"; v: "\{Fmt.n1(root.data.soc)} %"; }
+                Kv { k: "Pack voltage"; v: "\{Fmt.n1(root.data.pack-voltage)} V"; }
+                Kv { k: "Pack current"; v: "\{Fmt.n1(root.data.pack-current)} A"; }
+                Kv {
+                    k: "Aux voltage";
+                    v: "\{Fmt.n1(root.data.aux-voltage)} V";
+                    alarm: root.data.aux-voltage < 12;
+                }
+                Kv { k: "Aux percent"; v: "\{Fmt.n0(root.data.aux-percent)} %"; }
+                Kv {
+                    k: "Motor temp";
+                    v: "\{Fmt.n1(root.data.motor-temp)} °C";
+                    alarm: root.data.motor-temp > 110;
+                }
+                Kv {
+                    k: "Controller temp";
+                    v: "\{Fmt.n1(root.data.mc-temp)} °C";
+                    alarm: root.data.mc-temp > 85;
+                }
+                Kv {
+                    k: "BMS temp";
+                    v: "\{Fmt.n1(root.data.bms-temp)} °C";
+                    alarm: root.data.bms-temp > 55;
+                }
+                Kv { k: "High cell temp"; v: "\{Fmt.n1(root.data.high-cell-temp)} °C"; }
+                Kv { k: "Low cell temp"; v: "\{Fmt.n1(root.data.low-cell-temp)} °C"; }
+            }
+
+            VerticalLayout {
+                spacing: 2px;
+                alignment: start;
+                Kv { k: "Status"; v: root.data.status; }
+                Kv { k: "Motor on"; v: root.data.motor-on ? "yes" : "no"; }
+                Kv { k: "MC fault"; v: root.data.mc-fault ? "YES" : "no"; alarm: root.data.mc-fault; }
+                Kv { k: "BMS fault"; v: root.data.bms-fault ? "YES" : "no"; alarm: root.data.bms-fault; }
+                Kv {
+                    k: "BMS warning";
+                    v: root.data.bms-warning ? "YES" : "no";
+                    alarm: root.data.bms-warning;
+                }
+                Kv { k: "BMS error"; v: root.data.bms-error ? "YES" : "no"; alarm: root.data.bms-error; }
+                Kv { k: "BMS err codes"; v: root.data.bms-error-codes; }
+                Kv { k: "GPS pos"; v: root.data.gps-pos; }
+                Kv { k: "Altitude"; v: "\{Fmt.n1(root.data.altitude-m)} m"; }
+                Kv { k: "Heading"; v: "\{root.data.heading}°"; }
+                Kv { k: "GPS fix"; v: root.data.gps-fix ? "valid" : "none"; alarm: !root.data.gps-fix; }
+                Kv { k: "GPS fix mode"; v: "\{root.data.gps-fix-mode}"; }
+                Kv { k: "GPS time"; v: "\{Fmt.n1(root.data.gps-time-s)} s"; }
+                Kv { k: "Time active"; v: "\{Fmt.n1(root.data.time-active)} s"; }
+            }
+        }
+
+        // rolling BMS fault-code list (same source as the terminal debug view)
+        Rectangle {
+            vertical-stretch: 1;
+            background: root.bms-errors.length > 0 ? #2a0f0f : #141414;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: root.bms-errors.length > 0 ? #ff4d4d : #262626;
+            VerticalLayout {
+                padding: 8px;
+                spacing: 2px;
+                alignment: start;
+                Text {
+                    text: root.bms-errors.length > 0 ? "BMS FAULT CODES" : "BMS OK";
+                    color: root.bms-errors.length > 0 ? #ff6b6b : #35c759;
+                    font-size: 11px;
+                    font-weight: 700;
+                }
+                for msg in root.bms-errors: Text {
+                    text: "⚠ " + msg;
+                    color: #ffb3b3;
+                    font-size: 12px;
+                }
+            }
+        }
+    }
+}
+
+// ── fault menu (key f): big status boxes + BMS fault-code terminal ────────────
+component FaultMenu inherits Rectangle {
+    in property <DashData> data;
+    in property <[string]> bms-errors;
+    background: #0d0d0d;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+
+        Text {
+            text: "FAULTS & WARNINGS   ·   \{root.data.status}";
+            color: #d0d0d0;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        // big colored boxes for the main.rs fault / warning flags
+        GridLayout {
+            spacing: 10px;
+            Row {
+                FaultBox { label: "MC FAULT"; active: root.data.mc-fault; }
+                FaultBox { label: "BMS FAULT"; active: root.data.bms-fault; }
+            }
+            Row {
+                FaultBox { label: "BMS ERROR"; active: root.data.bms-error; }
+                FaultBox { label: "BMS WARNING"; active: root.data.bms-warning; is-warning: true; }
+            }
+        }
+
+        // small boxes + terminal for the decoded BMS fault codes
+        Rectangle {
+            vertical-stretch: 1;
+            background: #0a0a0a;
+            border-radius: 6px;
+            border-width: 1px;
+            border-color: root.bms-errors.length > 0 ? #ff4d4d : #262626;
+
+            VerticalLayout {
+                padding: 8px;
+                spacing: 6px;
+
+                Text {
+                    text: "BMS FAULT CODES   \{root.data.bms-error-codes}   ·   \{root.bms-errors.length} active";
+                    color: root.bms-errors.length > 0 ? #ff6b6b : #35c759;
+                    font-size: 12px;
+                    font-weight: 700;
+                }
+
+                // small boxes (chips), horizontally scrollable
+                Flickable {
+                    height: 24px;
+                    HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        for msg in root.bms-errors: Chip { text: msg; }
+                    }
+                }
+
+                // terminal
+                Flickable {
+                    vertical-stretch: 1;
+                    VerticalLayout {
+                        alignment: start;
+                        spacing: 2px;
+                        if root.bms-errors.length == 0: Text {
+                            text: "> no active BMS fault codes";
+                            color: #5a5a5a;
+                            font-size: 12px;
+                            font-family: "DejaVu Sans Mono";
+                        }
+                        for msg in root.bms-errors: Text {
+                            text: "> " + msg;
+                            color: #ffb3b3;
+                            font-size: 12px;
+                            font-family: "DejaVu Sans Mono";
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── temperature menu (key t): every temperature the backend reports ───────────
+component TempMenu inherits Rectangle {
+    in property <DashData> data;
+    background: #0d0d0d;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+
+        Text {
+            text: "TEMPERATURES";
+            color: #d0d0d0;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        Tile {
+            height: 62px;
+            label: "MOTOR"; unit: "°C";
+            value: Fmt.n1(root.data.motor-temp);
+            warn: root.data.motor-temp > 90; alarm: root.data.motor-temp > 110;
+        }
+        Tile {
+            height: 62px;
+            label: "CONTROLLER"; unit: "°C";
+            value: Fmt.n1(root.data.mc-temp);
+            warn: root.data.mc-temp > 70; alarm: root.data.mc-temp > 85;
+        }
+        Tile {
+            height: 62px;
+            label: "BMS"; unit: "°C";
+            value: Fmt.n1(root.data.bms-temp);
+            warn: root.data.bms-temp > 45; alarm: root.data.bms-temp > 55;
+        }
+        Tile {
+            height: 62px;
+            label: "HIGH CELL"; unit: "°C";
+            value: Fmt.n1(root.data.high-cell-temp);
+            warn: root.data.high-cell-temp > 45; alarm: root.data.high-cell-temp > 55;
+        }
+        Tile {
+            height: 62px;
+            label: "LOW CELL"; unit: "°C";
+            value: Fmt.n1(root.data.low-cell-temp);
+            warn: root.data.low-cell-temp < 0;
+        }
+    }
+}
+
+// ── powertrain menu (key p): pack + motor telemetry ──────────────────────────
+component PowertrainMenu inherits Rectangle {
+    in property <DashData> data;
+    background: #0d0d0d;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+
+        Text {
+            text: "POWERTRAIN";
+            color: #d0d0d0;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        HorizontalLayout {
+            spacing: 12px;
+
+            // pack / battery
+            VerticalLayout {
+                spacing: 8px;
+                Text { text: "PACK"; color: #6a6a6a; font-size: 12px; font-weight: 700; }
+                Tile {
+                    height: 58px; label: "STATE OF CHARGE"; unit: "%";
+                    value: Fmt.n1(root.data.soc);
+                    warn: root.data.soc < 30; alarm: root.data.soc < 15;
+                }
+                Tile {
+                    height: 58px; label: "PACK VOLTAGE"; unit: "V";
+                    value: Fmt.n1(root.data.pack-voltage);
+                }
+                Tile {
+                    height: 58px; label: "PACK CURRENT"; unit: "A";
+                    value: Fmt.n1(root.data.pack-current);
+                }
+                Tile {
+                    height: 58px; label: "AUX BATTERY"; unit: "V";
+                    value: Fmt.n1(root.data.aux-voltage);
+                    warn: root.data.aux-voltage < 12;
+                }
+                Tile {
+                    height: 58px; label: "AUX BATTERY"; unit: "%";
+                    value: Fmt.n0(root.data.aux-percent);
+                }
+            }
+
+            // motor
+            VerticalLayout {
+                spacing: 8px;
+                Text { text: "MOTOR"; color: #6a6a6a; font-size: 12px; font-weight: 700; }
+                Tile {
+                    height: 58px; label: "MOTOR RPM"; unit: "";
+                    value: Fmt.n0(root.data.motor-rpm);
+                }
+                Tile {
+                    height: 58px; label: "SPEED (motor)"; unit: "mph";
+                    value: Fmt.n1(root.data.speed-mph);
+                }
+                Tile {
+                    height: 58px; label: "THROTTLE"; unit: "%";
+                    value: Fmt.n0(root.data.throttle);
+                }
+                Tile {
+                    height: 58px; label: "MOTOR"; unit: "";
+                    value: root.data.motor-on ? "ON" : "OFF";
+                }
+                Tile {
+                    height: 58px; label: "BIKE STATUS"; unit: "";
+                    value: root.data.status;
+                }
+            }
+        }
+    }
+}
+
+// ── gps menu (key g): raw gps readout + map placeholder ──────────────────────
+// The map is not implemented — see the response notes for the offline-tile plan.
+component GpsMenu inherits Rectangle {
+    in property <DashData> data;
+    background: #0d0d0d;
+
+    VerticalLayout {
+        padding: 14px;
+        spacing: 10px;
+
+        Text {
+            text: "GPS";
+            color: #d0d0d0;
+            font-size: 15px;
+            font-weight: 700;
+        }
+
+        HorizontalLayout {
+            spacing: 12px;
+
+            // raw readout
+            Rectangle {
+                width: 300px;
+                background: #141414;
+                border-radius: 6px;
+                border-width: 1px;
+                border-color: #262626;
+                VerticalLayout {
+                    padding: 12px;
+                    spacing: 4px;
+                    alignment: start;
+                    Kv { k: "Position"; v: root.data.gps-pos; }
+                    Kv { k: "Altitude"; v: "\{Fmt.n1(root.data.altitude-m)} m"; }
+                    Kv { k: "Heading"; v: "\{root.data.heading}°"; }
+                    Kv { k: "Speed"; v: "\{Fmt.n1(root.data.speed-gps)} mph"; }
+                    Kv {
+                        k: "Fix"; v: root.data.gps-fix ? "valid" : "none";
+                        alarm: !root.data.gps-fix;
+                    }
+                    Kv { k: "Fix mode"; v: "\{root.data.gps-fix-mode}"; }
+                    Kv { k: "GPS time"; v: "\{Fmt.n1(root.data.gps-time-s)} s"; }
+                }
+            }
+
+            // map placeholder
+            Rectangle {
+                background: #0a0a0a;
+                border-radius: 6px;
+                border-width: 1px;
+                border-color: #262626;
+
+                // crosshair marking "you are here"
+                Rectangle { width: 1px; height: 100%; background: #1e1e1e; }
+                Rectangle { width: 100%; height: 1px; background: #1e1e1e; }
+                Rectangle {
+                    width: 12px; height: 12px;
+                    border-radius: 6px;
+                    background: root.data.gps-fix ? #35c759 : #5a5a5a;
+                    border-width: 2px;
+                    border-color: #0a0a0a;
+                }
+
+                VerticalLayout {
+                    alignment: end;
+                    padding: 10px;
+                    spacing: 2px;
+                    Text {
+                        text: "MAP — offline tiles, not implemented";
+                        color: #6a6a6a;
+                        font-size: 11px;
+                    }
+                    Text {
+                        text: root.data.gps-pos;
+                        color: #8a8a8a;
+                        font-size: 12px;
+                        font-family: "DejaVu Sans Mono";
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── hidden game menu (chord: all of d f t p g together) ──────────────────────
+component GameMenu inherits Rectangle {
+    background: #0d0d0d;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 12px;
+        Text {
+            text: "🦖  DINO RUN";
+            horizontal-alignment: center;
+            color: white;
+            font-size: 44px;
+            font-weight: 800;
+        }
+        Text {
+            text: "placeholder — game not implemented yet";
+            horizontal-alignment: center;
+            color: #7a7a7a;
+            font-size: 14px;
+        }
+        Text {
+            text: "press  d · f · t · p · g  to leave";
+            horizontal-alignment: center;
+            color: #5a5a5a;
+            font-size: 12px;
+        }
+    }
+}
+
 export component MainWindow inherits Window {
     title: "Dirtbike Dash";
     width: 800px;
@@ -126,237 +782,99 @@ export component MainWindow inherits Window {
     in property <DashData> data;
     in property <[string]> bms-errors;
 
+    // ── FSM state ─────────────────────────────────────────────────────────
+    property <Menu> menu: Menu.main;
+
+    // chord detector for the hidden game menu: each menu key latches its own flag;
+    // when all five are latched inside the timer window the game menu opens.
+    // (Slint expressions have no bitwise ops, hence five bools rather than a mask.)
+    property <bool> c-d;
+    property <bool> c-f;
+    property <bool> c-t;
+    property <bool> c-p;
+    property <bool> c-g;
+    chord-timer := Timer {
+        interval: 700ms;
+        running: root.c-d || root.c-f || root.c-t || root.c-p || root.c-g;
+        triggered() => {
+            root.c-d = false;
+            root.c-f = false;
+            root.c-t = false;
+            root.c-p = false;
+            root.c-g = false;
+        }
+    }
+
+    // toggle a menu: press its key to enter, press again to go back to main
+    function go(target: Menu) {
+        root.menu = root.menu == target ? Menu.main : target;
+    }
+
     // ── UI → Rust ──────────────────────────────────────────────────────────
     callback shutdown();
 
-    // capture keyboard: 'q' quits
+    // keyboard: see the file header for the full key map
     forward-focus: keys;
     keys := FocusScope {
         key-pressed(event) => {
-            if event.text == "q" {
-                root.shutdown();
+            if event.text == "q" { root.shutdown(); }
+            if event.text == "d" { root.go(Menu.debug); root.c-d = true; }
+            if event.text == "f" { root.go(Menu.fault); root.c-f = true; }
+            if event.text == "t" { root.go(Menu.temp); root.c-t = true; }
+            if event.text == "p" { root.go(Menu.powertrain); root.c-p = true; }
+            if event.text == "g" { root.go(Menu.gps); root.c-g = true; }
+            if root.c-d && root.c-f && root.c-t && root.c-p && root.c-g {
+                root.menu = Menu.game;
+                root.c-d = false;
+                root.c-f = false;
+                root.c-t = false;
+                root.c-p = false;
+                root.c-g = false;
             }
             accept
         }
     }
 
-    VerticalLayout {
-        padding: 12px;
-        spacing: 10px;
+    if menu == Menu.main: MainMenu {
+        width: 100%;
+        height: 100%;
+        data: root.data;
+    }
 
-        // ── header: status + faults ────────────────────────────────────────
-        HorizontalLayout {
-            height: 34px;
-            spacing: 8px;
+    if menu == Menu.debug: DebugMenu {
+        width: 100%;
+        height: 100%;
+        data: root.data;
+        bms-errors: root.bms-errors;
+    }
 
-            Rectangle {
-                width: 132px;
-                border-radius: 6px;
-                background: data.status == "FAULT" ? #ff3b3b
-                    : (data.status == "Active" ? #1f7a34 : #1c1c1c);
-                Text {
-                    text: data.status;
-                    color: white;
-                    font-size: 16px;
-                    font-weight: 700;
-                }
-            }
+    if menu == Menu.fault: FaultMenu {
+        width: 100%;
+        height: 100%;
+        data: root.data;
+        bms-errors: root.bms-errors;
+    }
 
-            Flag { label: "MOTOR"; active: data.motor-on; }
-            Flag { label: "MC FAULT"; active: data.mc-fault; }
-            Flag { label: "BMS FAULT"; active: data.bms-fault; }
-            Flag { label: "BMS WARN"; active: data.bms-warning; }
-            Flag { label: "BMS ERR"; active: data.bms-error; }
-            Flag { label: "GPS"; active: data.gps-fix; }
-        }
+    if menu == Menu.temp: TempMenu {
+        width: 100%;
+        height: 100%;
+        data: root.data;
+    }
 
-        // ── main row: big speed + SOC on the left, telemetry grid right ─────
-        HorizontalLayout {
-            spacing: 12px;
+    if menu == Menu.powertrain: PowertrainMenu {
+        width: 100%;
+        height: 100%;
+        data: root.data;
+    }
 
-            // left column
-            VerticalLayout {
-                width: 260px;
-                spacing: 10px;
+    if menu == Menu.gps: GpsMenu {
+        width: 100%;
+        height: 100%;
+        data: root.data;
+    }
 
-                Rectangle {
-                    height: 150px;
-                    background: #141414;
-                    border-radius: 8px;
-                    border-width: 1px;
-                    border-color: #262626;
-                    VerticalLayout {
-                        alignment: center;
-                        Text {
-                            text: Fmt.n0(data.speed-mph);
-                            color: white;
-                            font-size: 76px;
-                            font-weight: 800;
-                            horizontal-alignment: center;
-                        }
-                        Text {
-                            text: "MPH   ·   GPS \{Fmt.n0(data.speed-gps)}";
-                            color: #7a7a7a;
-                            font-size: 13px;
-                            horizontal-alignment: center;
-                        }
-                    }
-                }
-
-                // SOC gauge
-                Rectangle {
-                    height: 60px;
-                    background: #141414;
-                    border-radius: 8px;
-                    border-width: 1px;
-                    border-color: #262626;
-                    VerticalLayout {
-                        padding: 8px;
-                        spacing: 4px;
-                        HorizontalLayout {
-                            Text { text: "PACK SOC"; color: #8a8a8a; font-size: 11px; }
-                            Rectangle { }  // spacer
-                            Text {
-                                text: "\{Fmt.n1(data.soc)} %";
-                                color: white;
-                                font-size: 13px;
-                                font-weight: 700;
-                            }
-                        }
-                        Rectangle {
-                            height: 14px;
-                            background: #000000;
-                            border-radius: 7px;
-                            clip: true;
-                            Rectangle {
-                                x: 0;
-                                width: parent.width * clamp(data.soc, 0, 100) / 100;
-                                background: data.soc < 15 ? #ff3b3b
-                                    : (data.soc < 30 ? #ffcc33 : #35c759);
-                                border-radius: 7px;
-                            }
-                        }
-                    }
-                }
-
-                Stat {
-                    height: 52px;
-                    label: "THROTTLE";
-                    value: Fmt.n0(data.throttle);
-                    unit: "%";
-                }
-
-                Stat {
-                    height: 52px;
-                    label: "TIME ACTIVE";
-                    value: Fmt.n0(data.time-active);
-                    unit: "s";
-                }
-            }
-
-            // right: telemetry grid
-            GridLayout {
-                spacing: 8px;
-
-                Row {
-                    Stat {
-                        label: "PACK VOLTAGE"; unit: "V";
-                        value: Fmt.n1(data.pack-voltage);
-                    }
-                    Stat {
-                        label: "PACK CURRENT"; unit: "A";
-                        value: Fmt.n1(data.pack-current);
-                    }
-                    Stat {
-                        label: "MOTOR RPM"; unit: "";
-                        value: Fmt.n0(data.motor-rpm);
-                    }
-                }
-                Row {
-                    Stat {
-                        label: "MOTOR TEMP"; unit: "°C";
-                        value: Fmt.n1(data.motor-temp);
-                        warn: data.motor-temp > 90; alarm: data.motor-temp > 110;
-                    }
-                    Stat {
-                        label: "CONTROLLER TEMP"; unit: "°C";
-                        value: Fmt.n1(data.mc-temp);
-                        warn: data.mc-temp > 70; alarm: data.mc-temp > 85;
-                    }
-                    Stat {
-                        label: "BMS TEMP"; unit: "°C";
-                        value: Fmt.n1(data.bms-temp);
-                        warn: data.bms-temp > 45; alarm: data.bms-temp > 55;
-                    }
-                }
-                Row {
-                    Stat {
-                        label: "HIGH CELL TEMP"; unit: "°C";
-                        value: Fmt.n1(data.high-cell-temp);
-                        warn: data.high-cell-temp > 45; alarm: data.high-cell-temp > 55;
-                    }
-                    Stat {
-                        label: "LOW CELL TEMP"; unit: "°C";
-                        value: Fmt.n1(data.low-cell-temp);
-                    }
-                    Stat {
-                        label: "AUX BATTERY"; unit: "V";
-                        value: Fmt.n1(data.aux-voltage);
-                        warn: data.aux-voltage < 12;
-                    }
-                }
-            }
-        }
-
-        // ── footer: GPS + rolling BMS error list ───────────────────────────
-        HorizontalLayout {
-            height: 96px;
-            spacing: 12px;
-
-            Rectangle {
-                width: 260px;
-                background: #141414;
-                border-radius: 8px;
-                border-width: 1px;
-                border-color: #262626;
-                VerticalLayout {
-                    padding: 10px;
-                    spacing: 3px;
-                    Text { text: "GPS"; color: #8a8a8a; font-size: 11px; }
-                    Text {
-                        text: data.gps-pos;
-                        color: #e0e0e0;
-                        font-size: 14px;
-                    }
-                    Text {
-                        text: "alt \{Fmt.n1(data.altitude-m)} m   ·   hdg \{data.heading}°";
-                        color: #7a7a7a;
-                        font-size: 12px;
-                    }
-                }
-            }
-
-            Rectangle {
-                background: bms-errors.length > 0 ? #2a0f0f : #141414;
-                border-radius: 8px;
-                border-width: 1px;
-                border-color: bms-errors.length > 0 ? #ff4d4d : #262626;
-                VerticalLayout {
-                    padding: 10px;
-                    spacing: 2px;
-                    Text {
-                        text: bms-errors.length > 0 ? "BMS FAULT CODES" : "BMS OK";
-                        color: bms-errors.length > 0 ? #ff6b6b : #35c759;
-                        font-size: 11px;
-                        font-weight: 700;
-                    }
-                    for msg in bms-errors: Text {
-                        text: "⚠ " + msg;
-                        color: #ffb3b3;
-                        font-size: 12px;
-                    }
-                }
-            }
-        }
+    if menu == Menu.game: GameMenu {
+        width: 100%;
+        height: 100%;
     }
 }

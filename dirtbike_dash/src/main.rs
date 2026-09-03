@@ -77,6 +77,7 @@ fn run_ui(backend: Arc<Mutex<backend::Backend>>, initial_time: Instant) {
                 bms_fault: b.bms_fault,
                 bms_warning: b.bms_warning,
                 bms_error: b.bms_error,
+                bms_error_codes: format!("0x{:06X}", b.bms_error_codes).into(),
                 gps_pos: format!("{:.5}, {:.5}", b.lat, b.lon).into(),
                 altitude_m: b.altitude_m as f32,
                 heading: b
@@ -85,6 +86,8 @@ fn run_ui(backend: Arc<Mutex<backend::Backend>>, initial_time: Instant) {
                     .unwrap_or_else(|| "---".into())
                     .into(),
                 gps_fix: b.gps_fix_valid,
+                gps_fix_mode: b.gps_fix_mode as i32,
+                gps_time_s: b.gps_timestamp_s as f32,
                 time_active: initial_time.elapsed().as_secs_f32(),
             });
 
