@@ -41,7 +41,7 @@ sim = ["can"]
 # soc requires can obviously
 soc = ["can"]
 
-release = []
+release = ["dep:slint", "dep:slint-build"]
 debug = []
 
 # used for the match cases for the bike its implemented on
