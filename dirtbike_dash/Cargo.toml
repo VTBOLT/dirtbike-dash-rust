@@ -41,6 +41,8 @@ sim = ["can"]
 # soc requires can obviously
 soc = ["can"]
 
+# pulls in the Slint UI. also enables the real data sources (soc→can, gps)
+# so a `--features release` build shows live telemetry. deployment target is Linux.
 release = ["dep:slint", "dep:slint-build"]
 debug = []
 

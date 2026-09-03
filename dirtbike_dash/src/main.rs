@@ -13,7 +13,93 @@ use std::{
 };
 
 #[cfg(feature = "release")]
+use std::sync::{Arc, Mutex};
+
+#[cfg(feature = "release")]
 slint::include_modules!();
+
+// human-readable label for backend::Backend.bike_status
+#[cfg(feature = "release")]
+fn status_label(s: i32) -> &'static str {
+    match s {
+        0 => "OFF",
+        1 => "Idle",
+        2 => "Precharge",
+        3 => "Ready",
+        4 => "Active",
+        5 => "FAULT",
+        _ => "???",
+    }
+}
+
+// Owns the Slint window and pumps the event loop. Every ~33 ms a UI-thread timer
+// reads the shared backend snapshot and copies it into the window's `data` /
+// `bms-errors` properties. The backend update thread (spawned in `backend::new`)
+// keeps running independently; this just samples its latest output.
+#[cfg(feature = "release")]
+fn run_ui(backend: Arc<Mutex<backend::Backend>>, initial_time: Instant) {
+    use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
+
+    let ui = MainWindow::new().expect("failed to create window");
+
+    // UI -> Rust: the 'q' key / shutdown callback quits the event loop
+    ui.on_shutdown(|| {
+        let _ = slint::quit_event_loop();
+    });
+
+    let ui_weak = ui.as_weak();
+    let timer = Timer::default();
+    timer.start(
+        TimerMode::Repeated,
+        Duration::from_millis(33),
+        move || {
+            let Some(ui) = ui_weak.upgrade() else { return };
+            let b = backend.lock().unwrap().clone();
+
+            ui.set_data(DashData {
+                speed_mph: b.bike_speed_motor as f32,
+                speed_gps: b.bike_speed_gps,
+                soc: b.pack_soc as f32,
+                pack_voltage: b.pack_voltage as f32,
+                pack_current: b.pack_current as f32,
+                aux_voltage: b.aux_voltage as f32,
+                aux_percent: b.aux_percentage as f32,
+                motor_temp: b.motor_temp as f32,
+                mc_temp: b.mc_temp as f32,
+                bms_temp: b.bms_temp as f32,
+                high_cell_temp: b.high_cell_temp as f32,
+                low_cell_temp: b.low_cell_temp as f32,
+                motor_rpm: b.motor_speed as f32,
+                throttle: b.throttle as f32,
+                status: status_label(b.bike_status).into(),
+                motor_on: b.motor_on,
+                mc_fault: b.mc_fault,
+                bms_fault: b.bms_fault,
+                bms_warning: b.bms_warning,
+                bms_error: b.bms_error,
+                gps_pos: format!("{:.5}, {:.5}", b.lat, b.lon).into(),
+                altitude_m: b.altitude_m as f32,
+                heading: b
+                    .heading_deg
+                    .map(|h| format!("{h:.1}"))
+                    .unwrap_or_else(|| "---".into())
+                    .into(),
+                gps_fix: b.gps_fix_valid,
+                time_active: initial_time.elapsed().as_secs_f32(),
+            });
+
+            let errs: Vec<SharedString> = b
+                .bms_error_code_string
+                .iter()
+                .map(SharedString::from)
+                .collect();
+            ui.set_bms_errors(ModelRc::new(VecModel::from(errs)));
+        },
+    );
+
+    ui.run().expect("event loop failed");
+    drop(timer);
+}
 
 fn main() {
     // starts a system time clock
@@ -50,11 +136,9 @@ fn main() {
     // assigns backend and adds the gps data. I may have done this wrong, this may also be why the gps data doesn't work but given the launch error I dont think so
     let backend = backend::new(gps, initial_time);
 
-
-    #[cfg(feature = "release")] {
-    let ui = MainWindow::new().unwrap();
-    ui.run().unwrap();
-    }
+    // hands the shared snapshot to the Slint window; blocks on the event loop
+    #[cfg(feature = "release")]
+    run_ui(std::sync::Arc::clone(&backend), initial_time);
 
 
     // prints. please say it looks cool i put too much time into making it line up
