@@ -90,7 +90,9 @@ fn run_sim() {
     println!("[SIM] CAN simulator started — sending frames on vcan0 at 50 Hz");
 
     // ── Mutable "physical" state ────────────────────────────────────────
-    let mut tick: u64 = 0;
+    // Start mid-Riding phase (see phase table below) so the bike comes up
+    // "active" on launch instead of walking through boot/precharge/ready.
+    let mut tick: u64 = 400;
 
     // Temperatures (raw units — backend × 0.1 → °C)
     let mut motor_temp: u16  = 250;   // 25.0 °C
@@ -102,7 +104,7 @@ fn run_sim() {
     // Electrical (raw units)
     let mut aux_voltage: u16  = 125;  // 12.5 V
     let mut pack_soc: u8      = 95;   // 95 %
-    let mut pack_voltage: u16 = 1120; // 112.0 V
+    let mut pack_voltage: u16 = 5400; // 540.0 V  (raw × 0.1 V; HV pack range ~352–592 V)
     let mut pack_current: i16 = 0;    // 0.0 A
 
     // Motor
@@ -146,7 +148,7 @@ fn run_sim() {
                 bms_temp = 280;
                 mc_temp = 300;
                 pack_soc = 95;
-                pack_voltage = 1120;
+                pack_voltage = 5400;
                 highest_cell = 41500;
                 lowest_cell = 40800;
                 aux_voltage = 125;
@@ -167,24 +169,29 @@ fn run_sim() {
             bike_status = 4;
             let ride_t = phase - 400; // 0 .. 1000
 
+            // Continuous draw current: ~65 A with a slow ±12 A drift so it
+            // "varies little" and stays inside the 50–80 A band (raw ×0.1 A).
+            let draw_wobble = ((ride_t as f64 * 0.02).sin() * 120.0) as i16;
+            let draw_current = 650 + draw_wobble;
+
             if ride_t < 300 {
                 // Accelerate 0 → 5000 RPM
                 motor_speed = ((ride_t as f64 / 300.0) * 5000.0) as i16;
-                pack_current = 800 + (ride_t as i16 / 2).min(400);
+                pack_current = draw_current;
             } else if ride_t < 700 {
                 // Cruise ~5000 RPM
                 let wobble = ((ride_t as f64 * 0.05).sin() * 200.0) as i16;
                 motor_speed = 5000 + wobble;
-                pack_current = 350 + ((ride_t as f64 * 0.03).sin() * 50.0) as i16;
+                pack_current = draw_current;
             } else {
-                // Decelerate → 0
+                // Decelerate → 0 (draw tapers off, then light regen)
                 let dt = ride_t - 700;
                 let frac = 1.0 - (dt as f64 / 300.0);
                 motor_speed = (frac * 5000.0) as i16;
                 pack_current = if dt > 100 {
                     -(((dt as i16) - 100).min(200)) // regen
                 } else {
-                    (frac * 200.0) as i16
+                    (frac * draw_current as f64) as i16
                 };
             }
 
@@ -199,7 +206,7 @@ fn run_sim() {
             // SOC drains
             if tick % 100 == 0 && pack_soc > 5 {
                 pack_soc -= 1;
-                pack_voltage = pack_voltage.saturating_sub(3).max(800);
+                pack_voltage = pack_voltage.saturating_sub(3).max(3520); // floor ~352 V
                 highest_cell = highest_cell.saturating_sub(50);
                 lowest_cell  = lowest_cell.saturating_sub(60);
             }

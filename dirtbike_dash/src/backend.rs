@@ -109,17 +109,20 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
     let soc_data = soc::read_soctable();
     let battery_props = soc::read_battery_props();
     let mut max_cap= 0.0;
+    let mut orientation = 0.0;
 
     // match use cases. add as needed
     match cfg!(feature = "db") {
         true => {
         max_cap = battery_props[0];
+        
         },
         false => (),
     }
     match cfg!(feature = "b6") {
         true => {
         max_cap = battery_props[1];
+        orientation = 141.0;
         },
         false => (),
     }
@@ -148,11 +151,9 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
         let current = raw.pack_current as f64 * PACK_CURRENT_SCALE;
 
         // soc calculations
-        
-        let 
 
         // updates soc values
-        soc_value = soc::data_collection(voltage, ocv_curve.clone(), &mut v_buf, &mut c_buf, &max_cap, &current, &initial_time);
+        let soc_value = soc::data_collection(voltage, ocv_curve.clone(), &mut v_buf, &mut c_buf, &max_cap, &current, &initial_time, orientation);
 
         // builds backend
         let next = Backend {
