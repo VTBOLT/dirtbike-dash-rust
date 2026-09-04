@@ -12,6 +12,7 @@ latex/
 .code-workspace
 debug
 target
+.docker-cache/
 **/*.rs.bk
 *.pdb
 **/mutants.out*/

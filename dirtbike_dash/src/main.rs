@@ -41,6 +41,7 @@ fn run_ui(backend: Arc<Mutex<backend::Backend>>, initial_time: Instant) {
     use slint::{ModelRc, SharedString, Timer, TimerMode, VecModel};
 
     let ui = MainWindow::new().expect("failed to create window");
+    ui.window().set_fullscreen(true);
 
     // UI -> Rust: the 'q' key / shutdown callback quits the event loop
     ui.on_shutdown(|| {
