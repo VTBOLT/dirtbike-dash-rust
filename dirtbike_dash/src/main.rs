@@ -2,6 +2,7 @@ mod can;
 mod backend;
 mod gps;
 mod soc;
+mod motor;
 
 #[cfg(feature = "sim")]
 mod sim;

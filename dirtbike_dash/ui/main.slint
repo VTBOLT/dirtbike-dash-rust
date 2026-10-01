@@ -51,7 +51,7 @@ export struct DashData {
     high-cell-temp: float,   // C
     low-cell-temp: float,    // C
     motor-rpm: float,
-    throttle: float,         // %
+    throttle: float,         // %  (pack current / 175 A)
     status: string,          // OFF / Idle / Precharge / Ready / Active / FAULT
     motor-on: bool,
     mc-fault: bool,
@@ -75,50 +75,6 @@ export global Fmt {
     }
     pure public function n1(v: float) -> string {
         return "\{Math.round(v * 10) / 10}";
-    }
-}
-
-// small on/off pill for a fault flag
-component Flag inherits Rectangle {
-    in property <string> label;
-    in property <bool> active;
-
-    height: 26px;
-    background: root.active ? #ff3b3b : #1c1c1c;
-    border-radius: 13px;
-    border-width: 1px;
-    border-color: root.active ? #ff6b6b : #2e2e2e;
-
-    HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 12px;
-        Text {
-            text: root.label;
-            color: root.active ? #ffffff : #6a6a6a;
-            font-size: 12px;
-            font-weight: root.active ? 700 : 400;
-            vertical-alignment: center;
-        }
-    }
-}
-
-// vertical fill bar, 0..100, fills from the bottom up
-component VBar inherits Rectangle {
-    in property <float> value;
-    in property <brush> fill: #35c759;
-
-    background: #000000;
-    border-radius: 8px;
-    border-width: 1px;
-    border-color: #262626;
-    clip: true;
-
-    Rectangle {
-        width: 100%;
-        height: parent.height * clamp(root.value, 0, 100) / 100;
-        y: parent.height - self.height;
-        background: root.fill;
-        border-radius: 8px;
     }
 }
 
@@ -239,108 +195,326 @@ component Chip inherits Rectangle {
     }
 }
 
+// ── main-menu gauges ─────────────────────────────────────────────────────────
+
+// throttle: ")"-shaped arc band that fills bottom → top with a dark → light blue
+// gradient. Outline is a white border with a thin black separator inside it.
+// Geometry is drawn in a fixed 116 x 400 viewbox (band between two arcs centred
+// at (-260, 200), r = 310..360, ±32°); keep the element at that aspect (0.29).
+component ThrottleArc inherits Rectangle {
+    in property <float> value;   // 0..1
+
+    property <string> shape:
+        "M 45.3 390.8 A 360 360 0 0 0 45.3 9.2 L 2.9 35.7 A 310 310 0 0 1 2.9 364.3 Z";
+    // vertical extent of the shape in viewbox units, used to map value → fill line
+    property <float> top-v: 9.2;
+    property <float> bot-v: 390.8;
+    property <float> fill-v: root.bot-v - (root.bot-v - root.top-v) * clamp(root.value, 0, 1);
+
+    // Slint fits a Path into (size - stroke-width), so each stroked layer is grown
+    // by its stroke width to keep every layer on exactly the same geometry.
+
+    // white outer border: 12px stroke centred on the edge → 6px shows outside
+    Path {
+        x: -6px; y: -6px;
+        width: root.width + 12px; height: root.height + 12px;
+        viewbox-x: -6; viewbox-y: 0; viewbox-width: 116; viewbox-height: 400;
+        commands: root.shape;
+        stroke: #ffffff;
+        stroke-width: 12px;
+    }
+
+    // black interior + separator: 6px stroke → covers the inner 3px of the
+    // white border, leaving 3px white outside 3px black
+    Path {
+        x: -3px; y: -3px;
+        width: root.width + 6px; height: root.height + 6px;
+        viewbox-x: -6; viewbox-y: 0; viewbox-width: 116; viewbox-height: 400;
+        commands: root.shape;
+        fill: #000000;
+        stroke: #000000;
+        stroke-width: 6px;
+    }
+
+    // gradient fill, clipped to the bottom `value` fraction of the shape
+    Rectangle {
+        y: root.height * root.fill-v / 400;
+        height: root.height - self.y;
+        clip: true;
+        Path {
+            y: -parent.y;
+            width: root.width; height: root.height;
+            viewbox-x: -6; viewbox-y: 0; viewbox-width: 116; viewbox-height: 400;
+            commands: root.shape;
+            fill: @linear-gradient(0deg, #0b2a7a 0%, #1f5fd6 50%, #8fd3ff 100%);
+        }
+    }
+}
+
+// battery: white case + terminal nub, black separator, SOC bar filling bottom → top.
+// bar is green, yellow at ≤ 25 %, red at ≤ 10 %.
+component Battery inherits Rectangle {
+    in property <float> soc;     // 0..100
+
+    property <length> nub-h: root.height * 0.05;
+
+    Rectangle {
+        x: (root.width - self.width) / 2;
+        y: 0;
+        width: root.width * 0.4;
+        height: root.nub-h + 4px;   // tucks under the case's rounded top
+        border-radius: 3px;
+        background: #ffffff;
+    }
+
+    Rectangle {
+        y: root.nub-h;
+        height: root.height - root.nub-h;
+        border-radius: 10px;
+        background: #ffffff;
+
+        Rectangle {
+            x: 6px; y: 6px;
+            width: parent.width - 12px;
+            height: parent.height - 12px;
+            border-radius: 6px;
+            background: #000000;
+
+            Rectangle {
+                x: 5px; y: 5px;
+                width: parent.width - 10px;
+                height: parent.height - 10px;
+                clip: true;
+
+                Rectangle {
+                    height: parent.height * clamp(root.soc, 0, 100) / 100;
+                    y: parent.height - self.height;
+                    border-radius: 3px;
+                    background: root.soc <= 10 ? #ff3b3b
+                        : (root.soc <= 25 ? #ffcc33 : #35c759);
+                }
+            }
+        }
+    }
+}
+
+// speedometer: 0..200 mph over a 270° sweep (gap at the bottom). Outer bezel,
+// a speed bar over a faint track, ticks every 5 mph (labels every 20), a tapered
+// needle, and the digital speed in the bottom gap. All white — depth comes from
+// white at different opacities. Draws in a square of side min(width, height).
+component Speedo inherits Rectangle {
+    in property <float> mph;
+
+    // all geometry in px (viewbox == element size)
+    property <float> w: root.width / 1px;
+    property <float> h: root.height / 1px;
+    property <float> s: min(root.w, root.h);
+    property <float> cx: root.w / 2;
+    property <float> cy: root.h / 2;
+    property <float> r: root.s * 0.47;              // bezel radius
+    property <float> frac: clamp(root.mph / 200, 0, 1);
+    property <float> band-r: root.r - root.s * 0.035;
+    property <float> band-w: root.s * 0.04;
+    property <float> tick-r: root.r - root.s * 0.075;  // outer end of the ticks
+    property <float> label-r: root.r - root.s * 0.17;
+
+    // dial angle (deg, math convention) for a 0..1 fraction: 225° → -45°
+    pure function ang(f: float) -> float { return 225 - 270 * f; }
+    pure function px(rad: float, a: float) -> float { return root.cx + rad * Math.cos(a * 1deg); }
+    pure function py(rad: float, a: float) -> float { return root.cy - rad * Math.sin(a * 1deg); }
+    // Slint fits a Path into (size - stroke-width); grow each stroked Path by its
+    // stroke width (see `sw`) so the viewbox maps 1:1 onto this element.
+    // clockwise arc from fraction 0 to fraction f at radius rad
+    pure function arc(rad: float, f: float) -> string {
+        return "M \{root.px(rad, root.ang(0))} \{root.py(rad, root.ang(0))} "
+            + "A \{rad} \{rad} 0 \{f * 270 > 180 ? 1 : 0} 1 "
+            + "\{root.px(rad, root.ang(f))} \{root.py(rad, root.ang(f))}";
+    }
+
+    // bezel
+    Path {
+        property <length> sw: 5px;
+        x: -self.sw / 2; y: -self.sw / 2;
+        width: root.width + self.sw; height: root.height + self.sw;
+        viewbox-width: root.w; viewbox-height: root.h;
+        commands: root.arc(root.r, 1);
+        stroke: #ffffff;
+        stroke-width: self.sw;
+        stroke-line-cap: round;
+    }
+
+    // faint full-range track behind the speed bar
+    Path {
+        property <length> sw: root.band-w * 1px;
+        x: -self.sw / 2; y: -self.sw / 2;
+        width: root.width + self.sw; height: root.height + self.sw;
+        viewbox-width: root.w; viewbox-height: root.h;
+        commands: root.arc(root.band-r, 1);
+        stroke: #ffffff1f;
+        stroke-width: self.sw;
+        stroke-line-cap: round;
+    }
+
+    // speed bar matching the needle
+    if root.frac > 0.002: Path {
+        property <length> sw: root.band-w * 1px;
+        x: -self.sw / 2; y: -self.sw / 2;
+        width: root.width + self.sw; height: root.height + self.sw;
+        viewbox-width: root.w; viewbox-height: root.h;
+        commands: root.arc(root.band-r, root.frac);
+        stroke: #ffffff;
+        stroke-width: self.sw;
+        stroke-line-cap: round;
+    }
+
+    // ticks every 5 mph: major (20), medium (10), minor (5)
+    for i in 41: Path {
+        property <bool> major: Math.mod(i, 4) == 0;
+        property <bool> medium: Math.mod(i, 2) == 0;
+        property <float> a: root.ang(i / 40);
+        property <float> r1: root.tick-r
+            - root.s * (self.major ? 0.05 : (self.medium ? 0.032 : 0.018));
+        property <length> sw: self.major ? 4px : (self.medium ? 2.5px : 1.5px);
+        x: -self.sw / 2; y: -self.sw / 2;
+        width: root.width + self.sw; height: root.height + self.sw;
+        viewbox-width: root.w; viewbox-height: root.h;
+        commands: "M \{root.px(root.tick-r, self.a)} \{root.py(root.tick-r, self.a)} "
+            + "L \{root.px(self.r1, self.a)} \{root.py(self.r1, self.a)}";
+        stroke: self.medium ? #ffffff : #ffffff99;
+        stroke-width: self.sw;
+        stroke-line-cap: round;
+    }
+
+    // labels 0, 20, ... 200
+    for i in 11: Text {
+        property <float> a: root.ang(i / 10);
+        width: root.s * 0.12 * 1px;
+        height: root.s * 0.06 * 1px;
+        x: root.px(root.label-r, self.a) * 1px - self.width / 2;
+        y: root.py(root.label-r, self.a) * 1px - self.height / 2;
+        text: "\{i * 20}";
+        color: #ffffff;
+        font-size: root.s * 0.045 * 1px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    // tapered needle: kite from a short tail through the hub to a sharp tip
+    Path {
+        property <float> a: root.ang(root.frac);
+        property <float> tip: root.tick-r - root.s * 0.01;
+        property <float> tail: root.s * 0.06;
+        property <float> half: root.s * 0.016;     // half-width at the hub
+        width: 100%; height: 100%;
+        viewbox-width: root.w; viewbox-height: root.h;
+        commands: "M \{root.px(self.tip, self.a)} \{root.py(self.tip, self.a)} "
+            + "L \{root.px(self.half, self.a + 90)} \{root.py(self.half, self.a + 90)} "
+            + "L \{root.px(self.tail, self.a + 180)} \{root.py(self.tail, self.a + 180)} "
+            + "L \{root.px(self.half, self.a - 90)} \{root.py(self.half, self.a - 90)} Z";
+        fill: #ffffff;
+    }
+
+    // hub: white cap with a black centre
+    Rectangle {
+        width: root.s * 0.065 * 1px;
+        height: self.width;
+        x: root.cx * 1px - self.width / 2;
+        y: root.cy * 1px - self.height / 2;
+        border-radius: self.width / 2;
+        background: #ffffff;
+        Rectangle {
+            width: parent.width * 0.4;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: #000000;
+        }
+    }
+
+    // digital speed + units in the bottom gap
+    Text {
+        width: root.s * 0.5 * 1px;
+        height: root.s * 0.17 * 1px;
+        x: root.cx * 1px - self.width / 2;
+        y: (root.cy + root.r * 0.48) * 1px;
+        text: Fmt.n0(root.mph);
+        color: #ffffff;
+        font-size: root.s * 0.16 * 1px;
+        font-weight: 800;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    Rectangle {
+        width: root.s * 0.16 * 1px;
+        height: 2px;
+        x: root.cx * 1px - self.width / 2;
+        y: (root.cy + root.r * 0.48 + root.s * 0.175) * 1px;
+        background: #ffffff66;
+    }
+    Text {
+        width: root.s * 0.3 * 1px;
+        height: root.s * 0.06 * 1px;
+        x: root.cx * 1px - self.width / 2;
+        y: (root.cy + root.r * 0.48 + root.s * 0.185) * 1px;
+        text: "MPH";
+        color: #ffffff;
+        font-size: root.s * 0.042 * 1px;
+        font-weight: 700;
+        letter-spacing: root.s * 0.008 * 1px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
 // ── main menu: what the rider sees while riding ───────────────────────────────
-// throttle (left) · big GPS speed (center) · SOC (right) · alert lights on top.
-// Deliberately sparse — full telemetry lives in the debug menu. Layout is a
-// placeholder; the visual design gets revisited later.
+// battery SOC (left) · speedometer (center) · throttle arc (right).
+// The whole screen edge is an alert border: hidden normally, yellow on a BMS
+// warning, red on any fault (faults win). Full telemetry lives in the debug menu.
 component MainMenu inherits Rectangle {
     in property <DashData> data;
-    background: #0d0d0d;
+    background: #000000;
 
-    VerticalLayout {
-        padding: 16px;
-        spacing: 12px;
+    // throttle fill: backend's `throttle` % (pack current / 175 A) as a 0..1 fraction
+    property <float> throttle-frac: clamp(root.data.throttle / 100, 0, 1);
+    property <bool> fault: root.data.mc-fault || root.data.bms-fault
+        || root.data.bms-error || root.data.status == "FAULT";
+    property <bool> warning: root.data.bms-warning;
 
-        // alert lights
-        HorizontalLayout {
-            height: 30px;
-            spacing: 8px;
-            Rectangle {
-                width: 120px;
-                border-radius: 6px;
-                background: root.data.status == "FAULT" ? #ff3b3b
-                    : (root.data.status == "Active" ? #1f7a34 : #1c1c1c);
-                Text {
-                    text: root.data.status;
-                    color: white;
-                    font-size: 15px;
-                    font-weight: 700;
-                }
-            }
-            Flag { label: "MOTOR"; active: root.data.motor-on; }
-            Flag { label: "MC FAULT"; active: root.data.mc-fault; }
-            Flag { label: "BMS FAULT"; active: root.data.bms-fault; }
-            Flag { label: "BMS WARN"; active: root.data.bms-warning; }
-            Flag { label: "BMS ERR"; active: root.data.bms-error; }
-            Flag { label: "GPS"; active: root.data.gps-fix; }
-        }
+    // alert border thickness, and the clear gap kept between it and the gauges
+    property <length> alert-w: 8px;
+    property <length> margin: 48px;
+    property <length> dial: min(root.height - 2 * root.margin, root.width * 0.55);
 
-        HorizontalLayout {
-            spacing: 16px;
+    speedo := Speedo {
+        width: root.dial;
+        height: root.dial;
+        x: (root.width - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        mph: root.data.speed-mph;
+    }
 
-            // left: throttle
-            VerticalLayout {
-                width: 140px;
-                spacing: 8px;
-                Text {
-                    text: "THROTTLE";
-                    color: #8a8a8a;
-                    font-size: 14px;
-                    horizontal-alignment: center;
-                }
-                VBar { value: root.data.throttle; fill: #3b82f6; }
-                Text {
-                    text: "\{Fmt.n0(root.data.throttle)} %";
-                    color: white;
-                    font-size: 22px;
-                    font-weight: 700;
-                    horizontal-alignment: center;
-                }
-            }
+    Battery {
+        height: root.height * 0.55;
+        width: self.height * 0.36;
+        x: root.margin + (speedo.x - root.margin - self.width) / 2;
+        y: (root.height - self.height) / 2;
+        soc: root.data.soc;
+    }
 
-            // center: speed from GPS
-            VerticalLayout {
-                alignment: center;
-                Text {
-                    text: Fmt.n0(root.data.speed-gps);
-                    color: white;
-                    font-size: 180px;
-                    font-weight: 800;
-                    horizontal-alignment: center;
-                }
-                Text {
-                    text: "MPH";
-                    color: #7a7a7a;
-                    font-size: 24px;
-                    font-weight: 700;
-                    horizontal-alignment: center;
-                }
-            }
+    ThrottleArc {
+        height: root.height - 2 * root.margin;
+        width: self.height * 0.29;
+        x: root.width - root.margin - self.width;
+        y: root.margin;
+        value: root.throttle-frac;
+    }
 
-            // right: state of charge
-            VerticalLayout {
-                width: 140px;
-                spacing: 8px;
-                Text {
-                    text: "SOC";
-                    color: #8a8a8a;
-                    font-size: 14px;
-                    horizontal-alignment: center;
-                }
-                VBar {
-                    value: root.data.soc;
-                    fill: root.data.soc < 15 ? #ff3b3b
-                        : (root.data.soc < 30 ? #ffcc33 : #35c759);
-                }
-                Text {
-                    text: "\{Fmt.n0(root.data.soc)} %";
-                    color: white;
-                    font-size: 22px;
-                    font-weight: 700;
-                    horizontal-alignment: center;
-                }
-            }
-        }
+    // alert border around the whole screen
+    Rectangle {
+        visible: root.fault || root.warning;
+        background: transparent;
+        border-width: root.alert-w;
+        border-color: root.fault ? #ff3b3b : #ffcc33;
     }
 }
 

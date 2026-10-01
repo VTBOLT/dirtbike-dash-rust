@@ -71,7 +71,11 @@ fn cc_calc(current: &f64, max_cap: &f64, initial_time: &Instant, initial_soc: &f
 
 // reads all the data on the file on startup. used for all initial calculations
 pub fn read_soctable() -> Array2<f64> {
+    #[cfg(not(feature = "laptop"))]
     let mut file = File::open("/home/bolt/.local/share/dashboard/soctable.txt").expect("failed to open file");
+    #[cfg(feature = "laptop")]
+    let mut file = File::open("/home/aki/.local/share/dashboard/soctable.txt").expect("failed to open file");
+
 
     // pulls the entire thing to a string
     let mut contents = String::new();
@@ -93,7 +97,11 @@ pub fn read_soctable() -> Array2<f64> {
 
 // reads all the data on the file on startup. used for all initial calculations
 pub fn read_battery_props() -> Vec<f64> {
+    #[cfg(not(feature = "laptop"))]
     let mut file = File::open("/home/bolt/.local/share/dashboard/battery_props.txt").expect("failed to open file");
+    #[cfg(feature = "laptop")]
+    let mut file = File::open("/home/aki/.local/share/dashboard/battery_props.txt").expect("failed to open file");
+
 
     let mut contents = String::new();
     file.read_to_string(&mut contents).expect("failed to retrieve file contents");
@@ -108,7 +116,10 @@ pub fn read_battery_props() -> Vec<f64> {
 }
 
 pub fn write_soc_table(voltages: &Vec<f64>, capacities: &Vec<f64>) {
+    #[cfg(not(feature = "laptop"))]
     let file = OpenOptions::new().write(true).create(true).truncate(true).open("/home/bolt/.local/dashboard/soctable.txt").expect("failed read");
+    #[cfg(feature = "laptop")]
+    let file = OpenOptions::new().write(true).create(true).truncate(true).open("/home/aki/.local/dashboard/soctable.txt").expect("failed read");
 
     let mut writer = BufWriter::new(file);
     writer.get_ref().lock_exclusive().expect("failed to lock");

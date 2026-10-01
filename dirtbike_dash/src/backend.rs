@@ -7,6 +7,7 @@ use std::{
 use crate::can::{self, bms_errors, bms_warnings};
 use crate::gps::SharedGpsState;
 use crate::soc::{self};
+use crate::motor::{self, TorqueModel};
 
 
 // scaler constants
@@ -56,6 +57,14 @@ pub struct Backend {
     pub gps_fix_valid: bool,
     pub gps_fix_mode: u8,
     pub throttle: f64,
+
+    // EMRAX 268 MV model estimates (see motor.rs); motor-shaft torque, phase A_rms
+    pub motor_current_model: f64,  // A
+    pub motor_torque: f64,         // Nm
+    pub motor_current_limit: f64,  // A
+    pub motor_torque_limit: f64,   // Nm
+    pub motor_thermal_used: f64,   // % of the I²t budget
+    pub motor_voltage_limited: bool,
 }
 
 // check for errors as bool
@@ -139,6 +148,11 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
 
     
     let ocv_curve = soc::ocv_curve(soc_data);
+
+    // torque model state carries across ticks (ramp + I²t), so it lives out here
+    let mut torque_model = TorqueModel::new(&motor::EMRAX_268_MV);
+    let mut last_tick = Instant::now();
+
     loop {
         // raw can data
         let raw = can::DATA.lock().unwrap().clone();
@@ -154,6 +168,14 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
 
         // updates soc values
         let soc_value = soc::data_collection(voltage, ocv_curve.clone(), &mut v_buf, &mut c_buf, &max_cap, &current, &initial_time, orientation);
+
+        // torque model: throttle % (pack current / 175 A) + motor rpm + pack voltage
+        let throttle = current * MAX_PACK_CURRENT * 100.0; // % of 175 A
+        let motor_rpm = raw.motor_speed as f64 * MOTOR_SPEED_SCALE;
+        let now = Instant::now();
+        let dt = now.duration_since(last_tick).as_secs_f64();
+        last_tick = now;
+        let torque = torque_model.step(throttle, motor_rpm, voltage, dt);
 
         // builds backend
         let next = Backend {
@@ -175,7 +197,7 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
             pack_current:   current,
 
             // motor speed / bike speed from motor
-            motor_speed:      raw.motor_speed as f64 * MOTOR_SPEED_SCALE,
+            motor_speed:      motor_rpm,
             bike_speed_motor: raw.motor_speed as f64 * BIKE_SPEED_SCALE,
 
             // status
@@ -201,7 +223,15 @@ pub fn update_vars(shared: Arc<Mutex<Backend>>, gps: SharedGpsState, initial_tim
             gps_fix_mode:    g.fix_mode,
 
             // dedicated rider readout vars
-            throttle:        raw.pack_current as f64 * MAX_PACK_CURRENT,
+            throttle,
+
+            // torque model
+            motor_current_model:   torque.current_a,
+            motor_torque:          torque.torque_nm,
+            motor_current_limit:   torque.current_limit_a,
+            motor_torque_limit:    torque.torque_limit_nm,
+            motor_thermal_used:    torque.thermal_used_pct,
+            motor_voltage_limited: torque.voltage_limited,
         };
 
         *shared.lock().unwrap() = next;

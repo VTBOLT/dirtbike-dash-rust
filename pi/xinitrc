@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Installed on the Pi as ~/.xinitrc. `startx` runs this instead of a desktop
+# environment; when the dashboard process exits, X exits with it.
+set -e
+
+xset -dpms
+xset s off
+xset s noblank
+
+# no args: main.rs defaults to interface "can0" when built without the "sim" feature
+exec /home/pi/dashboard/dashboard
